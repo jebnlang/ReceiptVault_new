@@ -6,6 +6,19 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		7F088AEF2D1AB23E00503AA6 /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = 7F088AEE2D1AB23E00503AA6 /* GoogleSignIn */; };
+		7F088AF12D1AB23E00503AA6 /* GoogleSignInSwift in Frameworks */ = {isa = PBXBuildFile; productRef = 7F088AF02D1AB23E00503AA6 /* GoogleSignInSwift */; };
+		7F088AF42D1AB28C00503AA6 /* GoogleAPIClientForREST_Drive in Frameworks */ = {isa = PBXBuildFile; productRef = 7F088AF32D1AB28C00503AA6 /* GoogleAPIClientForREST_Drive */; };
+		7F088AF62D1AB28C00503AA6 /* GoogleAPIClientForREST_Sheets in Frameworks */ = {isa = PBXBuildFile; productRef = 7F088AF52D1AB28C00503AA6 /* GoogleAPIClientForREST_Sheets */; };
+		7F5899252D196C2300A8F9E3 /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = 7F5899242D196C2300A8F9E3 /* GoogleSignIn */; };
+		7F5899272D196C2300A8F9E3 /* GoogleSignInSwift in Frameworks */ = {isa = PBXBuildFile; productRef = 7F5899262D196C2300A8F9E3 /* GoogleSignInSwift */; };
+		7F62338F2D19C8E9005BF1FC /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = 7F62338E2D19C8E9005BF1FC /* GoogleSignIn */; };
+		7F6233912D19C8E9005BF1FC /* GoogleSignInSwift in Frameworks */ = {isa = PBXBuildFile; productRef = 7F6233902D19C8E9005BF1FC /* GoogleSignInSwift */; };
+		7FDA3DAE2D19C7B20038BF7C /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = 7FDA3DAD2D19C7B20038BF7C /* GoogleSignIn */; };
+		7FDA3DB02D19C7B20038BF7C /* GoogleSignInSwift in Frameworks */ = {isa = PBXBuildFile; productRef = 7FDA3DAF2D19C7B20038BF7C /* GoogleSignInSwift */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		7F0F9F512D18AB6A00AAE312 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -29,9 +42,22 @@
 		7F0F9F5A2D18AB6A00AAE312 /* ReceiptVaultUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ReceiptVaultUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		7F0F9F852D18AD4800AAE312 /* Exceptions for "ReceiptVault" folder in "ReceiptVault" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 7F0F9F3F2D18AB6800AAE312 /* ReceiptVault */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		7F0F9F422D18AB6800AAE312 /* ReceiptVault */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				7F0F9F852D18AD4800AAE312 /* Exceptions for "ReceiptVault" folder in "ReceiptVault" target */,
+			);
 			path = ReceiptVault;
 			sourceTree = "<group>";
 		};
@@ -52,6 +78,16 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				7F62338F2D19C8E9005BF1FC /* GoogleSignIn in Frameworks */,
+				7F5899252D196C2300A8F9E3 /* GoogleSignIn in Frameworks */,
+				7F5899272D196C2300A8F9E3 /* GoogleSignInSwift in Frameworks */,
+				7F088AF42D1AB28C00503AA6 /* GoogleAPIClientForREST_Drive in Frameworks */,
+				7F088AF12D1AB23E00503AA6 /* GoogleSignInSwift in Frameworks */,
+				7F6233912D19C8E9005BF1FC /* GoogleSignInSwift in Frameworks */,
+				7FDA3DAE2D19C7B20038BF7C /* GoogleSignIn in Frameworks */,
+				7FDA3DB02D19C7B20038BF7C /* GoogleSignInSwift in Frameworks */,
+				7F088AEF2D1AB23E00503AA6 /* GoogleSignIn in Frameworks */,
+				7F088AF62D1AB28C00503AA6 /* GoogleAPIClientForREST_Sheets in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -72,6 +108,13 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		42AD67A5972D7A99CF437C3B /* Pods */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = Pods;
+			sourceTree = "<group>";
+		};
 		7F0F9F372D18AB6800AAE312 = {
 			isa = PBXGroup;
 			children = (
@@ -79,6 +122,7 @@
 				7F0F9F532D18AB6A00AAE312 /* ReceiptVaultTests */,
 				7F0F9F5D2D18AB6A00AAE312 /* ReceiptVaultUITests */,
 				7F0F9F412D18AB6800AAE312 /* Products */,
+				42AD67A5972D7A99CF437C3B /* Pods */,
 			);
 			sourceTree = "<group>";
 		};
@@ -111,8 +155,6 @@
 				7F0F9F422D18AB6800AAE312 /* ReceiptVault */,
 			);
 			name = ReceiptVault;
-			packageProductDependencies = (
-			);
 			productName = ReceiptVault;
 			productReference = 7F0F9F402D18AB6800AAE312 /* ReceiptVault.app */;
 			productType = "com.apple.product-type.application";
@@ -134,8 +176,6 @@
 				7F0F9F532D18AB6A00AAE312 /* ReceiptVaultTests */,
 			);
 			name = ReceiptVaultTests;
-			packageProductDependencies = (
-			);
 			productName = ReceiptVaultTests;
 			productReference = 7F0F9F502D18AB6A00AAE312 /* ReceiptVaultTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
@@ -157,8 +197,6 @@
 				7F0F9F5D2D18AB6A00AAE312 /* ReceiptVaultUITests */,
 			);
 			name = ReceiptVaultUITests;
-			packageProductDependencies = (
-			);
 			productName = ReceiptVaultUITests;
 			productReference = 7F0F9F5A2D18AB6A00AAE312 /* ReceiptVaultUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
@@ -195,6 +233,11 @@
 			);
 			mainGroup = 7F0F9F372D18AB6800AAE312;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				7F5899222D196A4200A8F9E3 /* XCRemoteSwiftPackageReference "swift-algorithms" */,
+				7F088AED2D1AB23E00503AA6 /* XCLocalSwiftPackageReference "../GoogleDependencies/GoogleSignIn-iOS" */,
+				7F088AF22D1AB28C00503AA6 /* XCLocalSwiftPackageReference "../GoogleDependencies/google-api-objectivec-client-for-rest" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 7F0F9F412D18AB6800AAE312 /* Products */;
 			projectDirPath = "";
@@ -399,11 +442,14 @@
 				DEVELOPMENT_TEAM = HBAKSUY3C9;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = ReceiptVault/Info.plist;
+				INFOPLIST_KEY_NSCameraUsageDescription = "ReceiptVault needs camera access to capture receipt images";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -428,11 +474,14 @@
 				DEVELOPMENT_TEAM = HBAKSUY3C9;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = ReceiptVault/Info.plist;
+				INFOPLIST_KEY_NSCameraUsageDescription = "ReceiptVault needs camera access to capture receipt images";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -558,6 +607,101 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		7F088AED2D1AB23E00503AA6 /* XCLocalSwiftPackageReference "../GoogleDependencies/GoogleSignIn-iOS" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = "../GoogleDependencies/GoogleSignIn-iOS";
+		};
+		7F088AF22D1AB28C00503AA6 /* XCLocalSwiftPackageReference "../GoogleDependencies/google-api-objectivec-client-for-rest" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = "../GoogleDependencies/google-api-objectivec-client-for-rest";
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		7F5899222D196A4200A8F9E3 /* XCRemoteSwiftPackageReference "swift-algorithms" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/apple/swift-algorithms.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.2.0;
+			};
+		};
+		7F5899232D196C2300A8F9E3 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/google/GoogleSignIn-iOS.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 8.0.0;
+			};
+		};
+		7F62338D2D19C8E9005BF1FC /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/google/GoogleSignIn-iOS.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 8.0.0;
+			};
+		};
+		7FDA3DAC2D19C7B20038BF7C /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/google/GoogleSignIn-iOS.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 8.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		7F088AEE2D1AB23E00503AA6 /* GoogleSignIn */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = GoogleSignIn;
+		};
+		7F088AF02D1AB23E00503AA6 /* GoogleSignInSwift */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = GoogleSignInSwift;
+		};
+		7F088AF32D1AB28C00503AA6 /* GoogleAPIClientForREST_Drive */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = GoogleAPIClientForREST_Drive;
+		};
+		7F088AF52D1AB28C00503AA6 /* GoogleAPIClientForREST_Sheets */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = GoogleAPIClientForREST_Sheets;
+		};
+		7F5899242D196C2300A8F9E3 /* GoogleSignIn */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 7F5899232D196C2300A8F9E3 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
+			productName = GoogleSignIn;
+		};
+		7F5899262D196C2300A8F9E3 /* GoogleSignInSwift */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 7F5899232D196C2300A8F9E3 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
+			productName = GoogleSignInSwift;
+		};
+		7F62338E2D19C8E9005BF1FC /* GoogleSignIn */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 7F62338D2D19C8E9005BF1FC /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
+			productName = GoogleSignIn;
+		};
+		7F6233902D19C8E9005BF1FC /* GoogleSignInSwift */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 7F62338D2D19C8E9005BF1FC /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
+			productName = GoogleSignInSwift;
+		};
+		7FDA3DAD2D19C7B20038BF7C /* GoogleSignIn */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 7FDA3DAC2D19C7B20038BF7C /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
+			productName = GoogleSignIn;
+		};
+		7FDA3DAF2D19C7B20038BF7C /* GoogleSignInSwift */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 7FDA3DAC2D19C7B20038BF7C /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
+			productName = GoogleSignInSwift;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 7F0F9F382D18AB6800AAE312 /* Project object */;
 }

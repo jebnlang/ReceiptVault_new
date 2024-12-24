@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>NSCameraUsageDescription</key>
+    <string>ReceiptVault needs camera access to scan receipts</string>
+    <key>NSPhotoLibraryUsageDescription</key>
+    <string>ReceiptVault needs access to save scanned receipts</string>
+    <key>NSPhotoLibraryAddUsageDescription</key>
+    <string>ReceiptVault needs access to save your scanned receipts</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>ReceiptVault needs microphone access for scanning features</string>
+    <key>GIDClientID</key>
+    <string>634293998454-apeckjpcu9tcgqg2t6td9jne5d18187h.apps.googleusercontent.com</string>
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>com.googleusercontent.apps.634293998454-apeckjpcu9tcgqg2t6td9jne5d18187h</string>
+            </array>
+        </dict>
+    </array>
+    <key>UIApplicationSceneManifest</key>
+    <dict>
+        <key>UIApplicationSupportsMultipleScenes</key>
+        <false/>
+    </dict>
+    <key>GIDServerClientID</key>
+    <string>634293998454-apeckjpcu9tcgqg2t6td9jne5d18187h.apps.googleusercontent.com</string>
+    <key>GIDScopes</key>
+    <array>
+        <string>https://www.googleapis.com/auth/drive.file</string>
+        <string>https://www.googleapis.com/auth/drive.appdata</string>
+        <string>https://www.googleapis.com/auth/userinfo.profile</string>
+        <string>https://www.googleapis.com/auth/userinfo.email</string>
+    </array>
+</dict>
+</plist>

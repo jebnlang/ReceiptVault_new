@@ -640,4 +640,45 @@ class GoogleDriveService {
             }
         }
     }
+    
+    func getRootFolderId(completion: @escaping (Result<String, Error>) -> Void) {
+        guard let accessToken = GIDSignIn.sharedInstance.currentUser?.accessToken.tokenString else {
+            completion(.failure(NSError(domain: "com.receiptvault", code: -1, userInfo: [NSLocalizedDescriptionKey: "Not authenticated"])))
+            return
+        }
+        
+        let query = "name='\(rootFolderName)' and mimeType='application/vnd.google-apps.folder' and trashed=false"
+        let urlString = "\(driveAPI)/files?q=\(query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? query)&fields=files(id)"
+        
+        guard let url = URL(string: urlString) else {
+            completion(.failure(NSError(domain: "com.receiptvault", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid URL"])))
+            return
+        }
+        
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            if let error = error {
+                completion(.failure(error))
+                return
+            }
+            
+            guard let data = data else {
+                completion(.failure(NSError(domain: "com.receiptvault", code: -1, userInfo: [NSLocalizedDescriptionKey: "No data received"])))
+                return
+            }
+            
+            do {
+                let json = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any]
+                if let files = json?["files"] as? [[String: Any]], let firstFile = files.first, let id = firstFile["id"] as? String {
+                    completion(.success(id))
+                } else {
+                    completion(.failure(NSError(domain: "com.receiptvault", code: -1, userInfo: [NSLocalizedDescriptionKey: "Folder not found"])))
+                }
+            } catch {
+                completion(.failure(error))
+            }
+        }.resume()
+    }
 } 

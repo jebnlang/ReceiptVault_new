@@ -10,15 +10,48 @@ class SettingsViewController: UIViewController {
     }
     
     // MARK: - UI Elements
+    private lazy var headerView: UIView = {
+        let view = UIView()
+        view.backgroundColor = AppTheme.backgroundColor
+        return view
+    }()
+    
+    private lazy var titleLabel: UILabel = {
+        let label = UILabel()
+        label.text = "הגדרות"
+        label.font = .systemFont(ofSize: 28, weight: .bold)
+        label.textAlignment = .right
+        return label
+    }()
+    
+    private lazy var subtitleLabel: UILabel = {
+        let label = UILabel()
+        label.text = "נהל את החיבור שלך לגוגל דרייב"
+        label.font = .systemFont(ofSize: 14)
+        label.textColor = .secondaryLabel
+        label.textAlignment = .right
+        return label
+    }()
+    
+    private lazy var containerStackView: UIStackView = {
+        let stack = UIStackView()
+        stack.axis = .vertical
+        stack.spacing = AppTheme.padding
+        stack.layoutMargins = UIEdgeInsets(top: AppTheme.padding, 
+                                         left: AppTheme.padding, 
+                                         bottom: AppTheme.padding, 
+                                         right: AppTheme.padding)
+        stack.isLayoutMarginsRelativeArrangement = true
+        return stack
+    }()
+    
     private lazy var signInButton: UIButton = {
         let button = UIButton(type: .system)
         button.titleLabel?.font = .systemFont(ofSize: 16, weight: .medium)
-        button.layer.cornerRadius = 22
-        button.layer.borderWidth = 1
-        button.layer.shadowColor = UIColor.black.cgColor
-        button.layer.shadowOpacity = 0.1
-        button.layer.shadowOffset = CGSize(width: 0, height: 2)
-        button.layer.shadowRadius = 4
+        button.layer.cornerRadius = AppTheme.cornerRadius
+        AppTheme.styleCard(button)
+        button.contentHorizontalAlignment = .center
+        button.heightAnchor.constraint(equalToConstant: 50).isActive = true
         
         // Add Google logo
         if let googleLogo = UIImage(named: "google-logo")?.withRenderingMode(.alwaysOriginal) {
@@ -30,26 +63,31 @@ class SettingsViewController: UIViewController {
         return button
     }()
     
-    private lazy var folderButton: UIButton = {
-        let button = UIButton(type: .system)
-        let config = UIImage.SymbolConfiguration(pointSize: 18, weight: .medium)
-        let folderImage = UIImage(systemName: "folder.fill", withConfiguration: config)
-        button.setImage(folderImage, for: .normal)
-        button.setTitle("פתח תיקייה בגוגל דרייב", for: .normal)
-        button.titleLabel?.font = .systemFont(ofSize: 16, weight: .medium)
-        button.imageEdgeInsets = UIEdgeInsets(top: 0, left: -8, bottom: 0, right: 8)
-        button.backgroundColor = .systemGreen
-        button.tintColor = .white
-        button.setTitleColor(.white, for: .normal)
-        button.layer.cornerRadius = 12
-        button.layer.shadowColor = UIColor.black.cgColor
-        button.layer.shadowOpacity = 0.1
-        button.layer.shadowOffset = CGSize(width: 0, height: 2)
-        button.layer.shadowRadius = 4
-        button.isEnabled = false
-        button.alpha = 0.5
-        button.addTarget(self, action: #selector(folderButtonTapped), for: .touchUpInside)
-        return button
+    private lazy var statusCard: UIView = {
+        let view = UIView()
+        AppTheme.styleCard(view)
+        return view
+    }()
+    
+    private lazy var statusStackView: UIStackView = {
+        let stack = UIStackView()
+        stack.axis = .vertical
+        stack.spacing = 4
+        return stack
+    }()
+    
+    private lazy var statusTitleLabel: UILabel = {
+        let label = UILabel()
+        label.font = .systemFont(ofSize: 14, weight: .medium)
+        label.text = "סטטוס חיבור"
+        return label
+    }()
+    
+    private lazy var statusLabel: UILabel = {
+        let label = UILabel()
+        label.font = .systemFont(ofSize: 12)
+        label.textColor = .secondaryLabel
+        return label
     }()
     
     // MARK: - Lifecycle
@@ -65,99 +103,90 @@ class SettingsViewController: UIViewController {
     
     // MARK: - Setup
     private func setupUI() {
-        view.backgroundColor = .systemBackground
-        title = "הגדרות"
+        view.backgroundColor = AppTheme.backgroundColor
+        navigationItem.largeTitleDisplayMode = .never
         
-        view.addSubview(signInButton)
-        view.addSubview(folderButton)
+        view.addSubview(headerView)
+        headerView.addSubview(titleLabel)
+        headerView.addSubview(subtitleLabel)
         
-        signInButton.translatesAutoresizingMaskIntoConstraints = false
-        folderButton.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(containerStackView)
+        containerStackView.addArrangedSubview(signInButton)
+        
+        statusCard.addSubview(statusStackView)
+        statusStackView.addArrangedSubview(statusTitleLabel)
+        statusStackView.addArrangedSubview(statusLabel)
+        containerStackView.addArrangedSubview(statusCard)
+        
+        [headerView, titleLabel, subtitleLabel, containerStackView, statusStackView].forEach {
+            $0.translatesAutoresizingMaskIntoConstraints = false
+        }
         
         NSLayoutConstraint.activate([
-            signInButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 32),
-            signInButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
-            signInButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
-            signInButton.heightAnchor.constraint(equalToConstant: 44),
+            headerView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            headerView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            headerView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             
-            folderButton.topAnchor.constraint(equalTo: signInButton.bottomAnchor, constant: 16),
-            folderButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
-            folderButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
-            folderButton.heightAnchor.constraint(equalToConstant: 44)
+            titleLabel.topAnchor.constraint(equalTo: headerView.topAnchor, constant: AppTheme.padding),
+            titleLabel.leadingAnchor.constraint(equalTo: headerView.leadingAnchor, constant: AppTheme.padding),
+            titleLabel.trailingAnchor.constraint(equalTo: headerView.trailingAnchor, constant: -AppTheme.padding),
+            
+            subtitleLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 4),
+            subtitleLabel.leadingAnchor.constraint(equalTo: headerView.leadingAnchor, constant: AppTheme.padding),
+            subtitleLabel.trailingAnchor.constraint(equalTo: headerView.trailingAnchor, constant: -AppTheme.padding),
+            subtitleLabel.bottomAnchor.constraint(equalTo: headerView.bottomAnchor, constant: -AppTheme.padding),
+            
+            containerStackView.topAnchor.constraint(equalTo: headerView.bottomAnchor),
+            containerStackView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            containerStackView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            
+            statusStackView.topAnchor.constraint(equalTo: statusCard.topAnchor, constant: AppTheme.padding),
+            statusStackView.leadingAnchor.constraint(equalTo: statusCard.leadingAnchor, constant: AppTheme.padding),
+            statusStackView.trailingAnchor.constraint(equalTo: statusCard.trailingAnchor, constant: -AppTheme.padding),
+            statusStackView.bottomAnchor.constraint(equalTo: statusCard.bottomAnchor, constant: -AppTheme.padding)
         ])
         
         updateButtonStates()
     }
     
     private func updateButtonStates() {
-        folderButton.isEnabled = isAuthenticated
-        folderButton.alpha = isAuthenticated ? 1.0 : 0.5
-        
         if isAuthenticated {
-            signInButton.setTitle("מחובר ל-Google", for: .normal)
-            signInButton.backgroundColor = .systemGreen.withAlphaComponent(0.1)
-            signInButton.setTitleColor(.systemGreen, for: .normal)
-            signInButton.layer.borderColor = UIColor.systemGreen.cgColor
+            signInButton.setTitle("התנתק מגוגל", for: .normal)
+            signInButton.backgroundColor = .systemRed
+            signInButton.tintColor = .white
+            signInButton.setTitleColor(.white, for: .normal)
+            
+            statusLabel.text = "מחובר לגוגל דרייב"
+            statusLabel.textColor = AppTheme.accentColor
         } else {
-            signInButton.setTitle("התחבר עם Google", for: .normal)
-            signInButton.backgroundColor = .white
-            signInButton.setTitleColor(.systemBlue, for: .normal)
-            signInButton.layer.borderColor = UIColor.systemBlue.cgColor
+            signInButton.setTitle("התחבר עם גוגל", for: .normal)
+            signInButton.backgroundColor = AppTheme.cardBackgroundColor
+            signInButton.tintColor = .label
+            signInButton.setTitleColor(.label, for: .normal)
+            
+            statusLabel.text = "לא מחובר"
+            statusLabel.textColor = .secondaryLabel
         }
     }
     
     // MARK: - Actions
     @objc private func signInButtonTapped() {
         if isAuthenticated {
-            // Show sign out confirmation
-            let alert = UIAlertController(title: "התנתקות", message: "האם אתה בטוח שברצונך להתנתק?", preferredStyle: .alert)
-            alert.addAction(UIAlertAction(title: "ביטול", style: .cancel))
-            alert.addAction(UIAlertAction(title: "התנתק", style: .destructive) { [weak self] _ in
-                GIDSignIn.sharedInstance.signOut()
-                self?.updateButtonStates()
-                NotificationCenter.default.post(name: .googleSignInStatusChanged, object: nil)
-            })
-            present(alert, animated: true)
+            GIDSignIn.sharedInstance.signOut()
+            NotificationCenter.default.post(name: .googleSignInStatusChanged, object: nil)
+            updateButtonStates()
         } else {
-            authenticateWithGoogle()
-        }
-    }
-    
-    private func authenticateWithGoogle() {
-        googleDriveService.authenticate(from: self) { [weak self] result in
-            DispatchQueue.main.async {
-                switch result {
-                case .success:
-                    self?.updateButtonStates()
-                    NotificationCenter.default.post(name: .googleSignInStatusChanged, object: nil)
-                case .failure(let error):
-                    self?.showAlert(title: "שגיאה", message: "שגיאה בהתחברות: \(error.localizedDescription)")
-                }
-            }
-        }
-    }
-    
-    @objc private func folderButtonTapped() {
-        guard isAuthenticated else { return }
-        
-        googleDriveService.getRootFolderId { [weak self] result in
-            DispatchQueue.main.async {
-                switch result {
-                case .success(let folderId):
-                    if let url = URL(string: "https://drive.google.com/drive/folders/\(folderId)") {
-                        UIApplication.shared.open(url)
+            googleDriveService.authenticate(from: self) { result in
+                DispatchQueue.main.async {
+                    switch result {
+                    case .success:
+                        self.updateButtonStates()
+                        NotificationCenter.default.post(name: .googleSignInStatusChanged, object: nil)
+                    case .failure(let error):
+                        print("Failed to authenticate with Google Drive: \(error.localizedDescription)")
                     }
-                case .failure(let error):
-                    self?.showAlert(title: "שגיאה", message: "לא ניתן לפ��וח את התיקייה: \(error.localizedDescription)")
                 }
             }
         }
-    }
-    
-    // MARK: - Helper Methods
-    private func showAlert(title: String, message: String) {
-        let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "אישור", style: .default))
-        present(alert, animated: true)
     }
 } 

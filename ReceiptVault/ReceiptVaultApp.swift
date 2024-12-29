@@ -32,15 +32,6 @@ struct TabBarControllerRepresentable: UIViewControllerRepresentable {
             selectedImage: UIImage(systemName: "doc.text.fill")
         )
         
-        // Settings Tab
-        let settingsVC = SettingsViewController()
-        let settingsNav = UINavigationController(rootViewController: settingsVC)
-        settingsNav.tabBarItem = UITabBarItem(
-            title: "הגדרות",
-            image: UIImage(systemName: "gear"),
-            selectedImage: UIImage(systemName: "gear.fill")
-        )
-        
         // Scan Tab
         let scanVC = MainViewController()
         let scanNav = UINavigationController(rootViewController: scanVC)
@@ -50,8 +41,17 @@ struct TabBarControllerRepresentable: UIViewControllerRepresentable {
             selectedImage: UIImage(systemName: "camera.fill")
         )
         
-        tabBarController.viewControllers = [receiptsNav, settingsNav, scanNav]
-        tabBarController.selectedIndex = 2  // Set Scan tab as default
+        // Settings Tab
+        let settingsVC = SettingsViewController()
+        let settingsNav = UINavigationController(rootViewController: settingsVC)
+        settingsNav.tabBarItem = UITabBarItem(
+            title: "הגדרות",
+            image: UIImage(systemName: "gear"),
+            selectedImage: UIImage(systemName: "gear.fill")
+        )
+        
+        tabBarController.viewControllers = [receiptsNav, scanNav, settingsNav]
+        tabBarController.selectedIndex = 1  // Set Scan tab as default
         
         return tabBarController
     }

@@ -212,6 +212,90 @@ class GoogleDriveService {
         }
     }
     
+    func uploadReceiptWithData(image: UIImage, extractedData: [String: String]) async throws {
+        guard let accessToken = GIDSignIn.sharedInstance.currentUser?.accessToken.tokenString else {
+            throw NSError(domain: "com.receiptvault", code: -1, userInfo: [NSLocalizedDescriptionKey: "Not authenticated"])
+        }
+        
+        // Convert image to JPEG data
+        guard let imageData = image.jpegData(compressionQuality: 0.8) else {
+            throw NSError(domain: "com.receiptvault", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to process image"])
+        }
+        
+        // Convert JPEG to PDF
+        guard let pdfData = createPDFFromImageData(imageData) else {
+            throw NSError(domain: "com.receiptvault", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to create PDF"])
+        }
+        
+        print("PDF creation successful. Size: \(pdfData.count) bytes")
+        
+        // Get month and year from the extracted date or use current date as fallback
+        let (month, year, monthNum, yearNum): (String, String, Int, Int)
+        if let dateStr = extractedData["תאריך"],
+           let date = parseReceiptDate(dateStr) {
+            let dateFormatter = DateFormatter()
+            dateFormatter.locale = Locale(identifier: "he")
+            dateFormatter.dateFormat = "MMMM"
+            month = dateFormatter.string(from: date)
+            dateFormatter.dateFormat = "yyyy"
+            year = dateFormatter.string(from: date)
+            
+            let calendar = Calendar.current
+            monthNum = calendar.component(.month, from: date)
+            yearNum = calendar.component(.year, from: date)
+        } else {
+            let currentDate = Date()
+            let dateFormatter = DateFormatter()
+            dateFormatter.locale = Locale(identifier: "he")
+            dateFormatter.dateFormat = "MMMM"
+            month = dateFormatter.string(from: currentDate)
+            dateFormatter.dateFormat = "yyyy"
+            year = dateFormatter.string(from: currentDate)
+            
+            let calendar = Calendar.current
+            monthNum = calendar.component(.month, from: currentDate)
+            yearNum = calendar.component(.year, from: currentDate)
+        }
+        
+        // Create month folder if needed
+        let monthFolderId = try await ensureMonthFolder(accessToken: accessToken, month: month, year: year)
+        print("Month folder ID: \(monthFolderId)")
+        
+        // Ensure monthly sheet exists
+        let sheetId = try await GoogleSheetsService.shared.ensureMonthlySheet(
+            in: monthFolderId,
+            month: monthNum,
+            year: yearNum
+        )
+        
+        print("Sheet ID: \(sheetId)")
+        
+        // Upload the PDF
+        try await withCheckedThrowingContinuation { continuation in
+            uploadPDF(
+                accessToken: accessToken,
+                pdfData: pdfData,
+                businessName: extractedData["שם העסק"] ?? "Unknown",
+                folderId: monthFolderId
+            ) { result in
+                continuation.resume(with: result)
+            }
+        }
+        
+        // Add the extracted data to the sheet
+        try await GoogleSheetsService.shared.addReceiptData(
+            to: sheetId,
+            extractedData: extractedData
+        )
+    }
+    
+    private func parseReceiptDate(_ dateStr: String) -> Date? {
+        let dateFormatter = DateFormatter()
+        dateFormatter.locale = Locale(identifier: "he")
+        dateFormatter.dateFormat = "dd/MM/yyyy"
+        return dateFormatter.date(from: dateStr)
+    }
+    
     private func createPDFFromImageData(_ imageData: Data) -> Data? {
         guard let image = UIImage(data: imageData) else { return nil }
         
@@ -680,5 +764,24 @@ class GoogleDriveService {
                 completion(.failure(error))
             }
         }.resume()
+    }
+    
+    private func ensureMonthFolder(accessToken: String, month: String, year: String) async throws -> String {
+        // Get root folder ID first
+        let rootFolderId = try await withCheckedThrowingContinuation { continuation in
+            createRootFolderIfNeeded(accessToken: accessToken) { result in
+                continuation.resume(with: result)
+            }
+        }
+        
+        // Create month folder if needed
+        let monthFolderName = "\(month) \(year)"
+        let monthFolderId = try await withCheckedThrowingContinuation { continuation in
+            createMonthFolderIfNeeded(accessToken: accessToken, monthName: monthFolderName, parentId: rootFolderId) { result in
+                continuation.resume(with: result)
+            }
+        }
+        
+        return monthFolderId
     }
 } 

@@ -15,6 +15,13 @@ struct ReceiptVaultApp: App {
     var body: some Scene {
         WindowGroup {
             TabBarControllerRepresentable()
+                .ignoresSafeArea()
+                .onAppear {
+                    // Ensure we're using the main thread for UI
+                    DispatchQueue.main.async {
+                        UIApplication.shared.windows.first?.makeKeyAndVisible()
+                    }
+                }
         }
     }
 }

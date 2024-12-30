@@ -10,6 +10,8 @@ class MainViewController: UIViewController {
         return GIDSignIn.sharedInstance.currentUser != nil
     }
     
+    weak var delegate: MainViewControllerDelegate?
+    
     // MARK: - UI Elements
     private lazy var logoImageView: UIImageView = {
         let imageView = UIImageView()
@@ -97,7 +99,11 @@ class MainViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         setupUI()
-        setupNotifications()
+        
+        // Ensure we're on the main thread for UI work
+        DispatchQueue.main.async { [weak self] in
+            self?.configureInitialState()
+        }
     }
     
     override func viewDidLayoutSubviews() {
@@ -118,66 +124,81 @@ class MainViewController: UIViewController {
     
     // MARK: - Setup
     private func setupUI() {
-        view.backgroundColor = AppTheme.backgroundColor
-        title = "סריקה"
-        
-        view.addSubview(logoImageView)
-        view.addSubview(scanButton)
-        view.addSubview(uploadButton)
-        view.addSubview(connectionStatusView)
-        view.addSubview(scanInstructionLabel)
-        
-        connectionStatusView.addSubview(statusIndicator)
-        connectionStatusView.addSubview(statusLabel)
-        
-        [scanButton, uploadButton, connectionStatusView, statusIndicator, statusLabel].forEach {
-            $0.translatesAutoresizingMaskIntoConstraints = false
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            view.backgroundColor = AppTheme.backgroundColor
+            title = "סריקה"
+            
+            view.addSubview(logoImageView)
+            view.addSubview(scanButton)
+            view.addSubview(uploadButton)
+            view.addSubview(connectionStatusView)
+            view.addSubview(scanInstructionLabel)
+            
+            connectionStatusView.addSubview(statusIndicator)
+            connectionStatusView.addSubview(statusLabel)
+            
+            [scanButton, uploadButton, connectionStatusView, statusIndicator, statusLabel].forEach {
+                $0.translatesAutoresizingMaskIntoConstraints = false
+            }
+            
+            NSLayoutConstraint.activate([
+                // Logo constraints
+                logoImageView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: AppTheme.padding * 2),
+                logoImageView.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+                logoImageView.widthAnchor.constraint(equalToConstant: 120),
+                logoImageView.heightAnchor.constraint(equalToConstant: 120),
+                
+                // Scan button constraints
+                scanButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+                scanButton.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+                scanButton.widthAnchor.constraint(equalToConstant: 100),
+                scanButton.heightAnchor.constraint(equalToConstant: 100),
+                
+                // Upload button constraints
+                uploadButton.topAnchor.constraint(equalTo: scanButton.bottomAnchor, constant: AppTheme.padding * 2),
+                uploadButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+                uploadButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: AppTheme.padding),
+                uploadButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -AppTheme.padding),
+                uploadButton.heightAnchor.constraint(equalToConstant: 50),
+                
+                // Scan instruction label
+                scanInstructionLabel.topAnchor.constraint(equalTo: uploadButton.bottomAnchor, constant: AppTheme.padding),
+                scanInstructionLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: AppTheme.padding),
+                scanInstructionLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -AppTheme.padding),
+                
+                // Connection status view constraints
+                connectionStatusView.topAnchor.constraint(equalTo: scanInstructionLabel.bottomAnchor, constant: AppTheme.padding * 2),
+                connectionStatusView.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+                connectionStatusView.heightAnchor.constraint(equalToConstant: 44),
+                connectionStatusView.widthAnchor.constraint(equalToConstant: 200),
+                
+                // Status indicator constraints
+                statusIndicator.leadingAnchor.constraint(equalTo: connectionStatusView.leadingAnchor, constant: AppTheme.padding),
+                statusIndicator.centerYAnchor.constraint(equalTo: connectionStatusView.centerYAnchor),
+                statusIndicator.widthAnchor.constraint(equalToConstant: 8),
+                statusIndicator.heightAnchor.constraint(equalToConstant: 8),
+                
+                // Status label constraints
+                statusLabel.leadingAnchor.constraint(equalTo: statusIndicator.trailingAnchor, constant: AppTheme.smallPadding),
+                statusLabel.trailingAnchor.constraint(equalTo: connectionStatusView.trailingAnchor, constant: -AppTheme.padding),
+                statusLabel.centerYAnchor.constraint(equalTo: connectionStatusView.centerYAnchor)
+            ])
+            
+            updateConnectionStatus()
         }
-        
-        NSLayoutConstraint.activate([
-            // Logo constraints
-            logoImageView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: AppTheme.padding * 2),
-            logoImageView.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            logoImageView.widthAnchor.constraint(equalToConstant: 120),
-            logoImageView.heightAnchor.constraint(equalToConstant: 120),
-            
-            // Scan button constraints
-            scanButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            scanButton.centerYAnchor.constraint(equalTo: view.centerYAnchor),
-            scanButton.widthAnchor.constraint(equalToConstant: 100),
-            scanButton.heightAnchor.constraint(equalToConstant: 100),
-            
-            // Upload button constraints
-            uploadButton.topAnchor.constraint(equalTo: scanButton.bottomAnchor, constant: AppTheme.padding * 2),
-            uploadButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            uploadButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: AppTheme.padding),
-            uploadButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -AppTheme.padding),
-            uploadButton.heightAnchor.constraint(equalToConstant: 50),
-            
-            // Scan instruction label
-            scanInstructionLabel.topAnchor.constraint(equalTo: uploadButton.bottomAnchor, constant: AppTheme.padding),
-            scanInstructionLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: AppTheme.padding),
-            scanInstructionLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -AppTheme.padding),
-            
-            // Connection status view constraints
-            connectionStatusView.topAnchor.constraint(equalTo: scanInstructionLabel.bottomAnchor, constant: AppTheme.padding * 2),
-            connectionStatusView.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            connectionStatusView.heightAnchor.constraint(equalToConstant: 44),
-            connectionStatusView.widthAnchor.constraint(equalToConstant: 200),
-            
-            // Status indicator constraints
-            statusIndicator.leadingAnchor.constraint(equalTo: connectionStatusView.leadingAnchor, constant: AppTheme.padding),
-            statusIndicator.centerYAnchor.constraint(equalTo: connectionStatusView.centerYAnchor),
-            statusIndicator.widthAnchor.constraint(equalToConstant: 8),
-            statusIndicator.heightAnchor.constraint(equalToConstant: 8),
-            
-            // Status label constraints
-            statusLabel.leadingAnchor.constraint(equalTo: statusIndicator.trailingAnchor, constant: AppTheme.smallPadding),
-            statusLabel.trailingAnchor.constraint(equalTo: connectionStatusView.trailingAnchor, constant: -AppTheme.padding),
-            statusLabel.centerYAnchor.constraint(equalTo: connectionStatusView.centerYAnchor)
-        ])
-        
-        updateConnectionStatus()
+    }
+    
+    private func configureInitialState() {
+        // Move any initial setup here
+    }
+    
+    // Handle cleanup when view is dismissed
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        if isBeingDismissed {
+            delegate?.mainViewControllerDidFinish()
+        }
     }
     
     private func setupNotifications() {

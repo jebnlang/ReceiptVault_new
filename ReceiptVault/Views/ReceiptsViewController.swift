@@ -95,9 +95,18 @@ class ReceiptsViewController: UIViewController {
     
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        loadMonths()
-        tableView.reloadData()
+        if needsReload {
+            loadMonths()
+            tableView.reloadData()
+        }
         updateFolderButtonState()
+    }
+    
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        if isMovingFromParent {
+            NotificationCenter.default.removeObserver(self)
+        }
     }
     
     deinit {
@@ -151,7 +160,14 @@ class ReceiptsViewController: UIViewController {
     }
     
     private func loadMonths() {
-        months = fileManager.getAllMonths()
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let months = self?.fileManager.getAllMonths() ?? []
+            
+            DispatchQueue.main.async {
+                self?.months = months
+                self?.needsReload = false
+            }
+        }
     }
     
     // MARK: - Actions
@@ -193,7 +209,9 @@ class ReceiptsViewController: UIViewController {
     }
     
     @objc private func handleGoogleSignInStatusChanged() {
-        updateFolderButtonState()
+        DispatchQueue.main.async { [weak self] in
+            self?.updateFolderButtonState()
+        }
     }
     
     private func updateFolderButtonState() {
@@ -201,6 +219,9 @@ class ReceiptsViewController: UIViewController {
         folderButton.isEnabled = isAuthenticated
         folderButton.alpha = isAuthenticated ? 1 : 0.5
     }
+    
+    // Add property to track reload state
+    private var needsReload: Bool = true
 }
 
 // MARK: - UITableViewDelegate & DataSource

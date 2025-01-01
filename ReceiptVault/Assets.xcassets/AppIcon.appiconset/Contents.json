@@ -19,6 +19,12 @@
       "size" : "20x20"
     },
     {
+      "filename" : "AppIcon-29.png",
+      "idiom" : "iphone",
+      "scale" : "1x",
+      "size" : "29x29"
+    },
+    {
       "filename" : "AppIcon-29@2x.png",
       "idiom" : "iphone",
       "scale" : "2x",
@@ -89,6 +95,12 @@
       "idiom" : "ipad",
       "scale" : "2x",
       "size" : "40x40"
+    },
+    {
+      "filename" : "AppIcon~ipad.png",
+      "idiom" : "ipad",
+      "scale" : "1x",
+      "size" : "76x76"
     },
     {
       "filename" : "AppIcon@2x~ipad.png",

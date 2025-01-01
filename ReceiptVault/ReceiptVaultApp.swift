@@ -12,6 +12,13 @@ import GoogleSignIn
 struct ReceiptVaultApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     
+    init() {
+        print("\n=== App Initialization ===")
+        // Initialize LocalFileManager
+        _ = LocalFileManager.shared
+        print("✓ App initialization complete")
+    }
+    
     var body: some Scene {
         WindowGroup {
             TabBarControllerRepresentable()

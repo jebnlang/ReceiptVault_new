@@ -1,6 +1,14 @@
 import Foundation
 import UIKit
 
+enum GeminiError: Error {
+    case networkError(String)
+    case invalidResponse
+    case rateLimitExceeded
+    case apiError(String)
+    case parsingError
+}
+
 class GeminiService {
     static let shared = GeminiService()
     private let apiKey = "AIzaSyB2l2XCXgM98bhNj0b7i_cOAIUQ4_ySa8Y"
@@ -16,8 +24,7 @@ class GeminiService {
         
         guard let imageData = image.jpegData(compressionQuality: 0.8) else {
             print("❌ Failed to convert image to JPEG data")
-            completion(.failure(NSError(domain: "com.receiptvault", code: -1,
-                userInfo: [NSLocalizedDescriptionKey: "Failed to convert image to data"])))
+            completion(.failure(GeminiError.networkError("Failed to convert image to data")))
             return
         }
         
@@ -83,6 +90,19 @@ class GeminiService {
                 
                 if let httpResponse = response as? HTTPURLResponse {
                     print("📡 HTTP Status Code: \(httpResponse.statusCode)")
+                    
+                    // Check for rate limiting
+                    if httpResponse.statusCode == 429 {
+                        completion(.failure(GeminiError.rateLimitExceeded))
+                        return
+                    }
+                    
+                    // Check for other error status codes
+                    if httpResponse.statusCode != 200 {
+                        completion(.failure(GeminiError.apiError("HTTP Status: \(httpResponse.statusCode)")))
+                        return
+                    }
+                    
                     print("\n📥 Response Headers:")
                     httpResponse.allHeaderFields.forEach { key, value in
                         print("\(key): \(value)")
@@ -121,10 +141,9 @@ class GeminiService {
                         print("Keys found: \(json.keys.joined(separator: ", "))")
                         
                         if let error = json["error"] as? [String: Any] {
-                            print("❌ API Error:")
-                            print("Code: \(error["code"] ?? "unknown")")
-                            print("Message: \(error["message"] ?? "unknown")")
-                            print("Status: \(error["status"] ?? "unknown")")
+                            let errorMessage = error["message"] as? String ?? "Unknown API error"
+                            completion(.failure(GeminiError.apiError(errorMessage)))
+                            return
                         }
                         
                         if let candidates = json["candidates"] as? [[String: Any]] {
@@ -155,11 +174,10 @@ class GeminiService {
                     }
                 } catch {
                     print("❌ JSON Parsing Error: \(error)")
-                    if let jsonError = error as? NSError {
-                        print("Domain: \(jsonError.domain)")
-                        print("Code: \(jsonError.code)")
-                        print("User Info: \(jsonError.userInfo)")
-                    }
+                    let jsonError = error as NSError
+                    print("Domain: \(jsonError.domain)")
+                    print("Code: \(jsonError.code)")
+                    print("User Info: \(jsonError.userInfo)")
                     DispatchQueue.main.async {
                         completion(.failure(error))
                     }

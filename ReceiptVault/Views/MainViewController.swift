@@ -292,53 +292,59 @@ class MainViewController: UIViewController {
     }
     
     private func handleImageUpload(at url: URL) {
+        print("\n=== Handling Image Upload ===")
         guard let image = UIImage(contentsOfFile: url.path) else {
+            print("❌ Failed to load image from: \(url.path)")
             self.showAlert(title: "שגיאה", message: "לא ניתן לטעון את התמונה")
             return
         }
+        print("✓ Successfully loaded image")
         
         Task {
             do {
-                // Extract receipt data once using AI
+                print("Starting AI extraction...")
                 let extractedData = try await GeminiService.shared.extractReceiptData(from: image)
-                print("Extracted data: \(extractedData)")
+                print("✓ AI extraction complete: \(extractedData)")
                 
-                // Get the month from the extracted date or use current date as fallback
                 let monthName: String
-                if let dateStr = extractedData["תאריך"] {
-                    print("Found date string: \(dateStr)")
-                    if let date = self.parseReceiptDate(dateStr) {
-                        print("Parsed date: \(date)")
-                        monthName = self.formatMonthYear(from: date)
-                        print("Formatted month name: \(monthName)")
-                    } else {
-                        print("Failed to parse date string: \(dateStr)")
-                        monthName = self.getCurrentMonthName()
-                        print("Using current month: \(monthName)")
-                    }
+                if let dateStr = extractedData["תאריך"],
+                   let date = self.parseReceiptDate(dateStr) {
+                    monthName = self.formatMonthYear(from: date)
+                    print("Using extracted date for month: \(monthName)")
                 } else {
-                    print("No date found in extracted data")
                     monthName = self.getCurrentMonthName()
                     print("Using current month: \(monthName)")
                 }
                 
                 if let pdfData = self.createPDFFromImage(image) {
                     let fileName = "Receipt_\(self.formatDate()).pdf"
+                    print("Created PDF file: \(fileName)")
                     
                     // Save locally
+                    print("Attempting to save locally...")
                     if LocalFileManager.shared.saveReceipt(pdfData: pdfData, fileName: fileName, monthName: monthName) {
+                        print("✓ Local save successful")
+                        
                         if self.isAuthenticated {
-                            // Upload to Google Drive with extracted data
+                            print("Uploading to Google Drive...")
                             try await self.googleDriveService.uploadReceiptWithData(image: image, extractedData: extractedData)
+                            print("✓ Google Drive upload successful")
                             DispatchQueue.main.async {
                                 self.showAlert(title: "הצלחה", message: "הקבלה נשמרה בהצלחה והועלתה ל-Google Drive")
                             }
                         } else {
+                            print("Not authenticated, skipping Google Drive upload")
                             self.showAlert(title: "הצלחה", message: "הקבלה נשמרה בהצלחה במכשיר")
                         }
+                    } else {
+                        print("❌ Local save failed")
+                        self.showAlert(title: "שגיאה", message: "שגיאה בשמירת הקבלה")
                     }
+                } else {
+                    print("❌ Failed to create PDF from image")
                 }
             } catch {
+                print("❌ Error in upload process: \(error)")
                 self.showAlert(title: "שגיאה", message: "שגיאה בעיבוד הקבלה: \(error.localizedDescription)")
             }
         }

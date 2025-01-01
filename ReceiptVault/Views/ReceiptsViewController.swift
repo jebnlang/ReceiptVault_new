@@ -88,6 +88,7 @@ class ReceiptsViewController: UIViewController {
     // MARK: - Lifecycle
     override func viewDidLoad() {
         super.viewDidLoad()
+        print("\n=== ReceiptsViewController: viewDidLoad ===")
         setupUI()
         loadMonths()
         setupNotifications()
@@ -95,10 +96,8 @@ class ReceiptsViewController: UIViewController {
     
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        if needsReload {
-            loadMonths()
-            tableView.reloadData()
-        }
+        print("\n=== ReceiptsViewController: viewWillAppear ===")
+        loadMonths()
         updateFolderButtonState()
     }
     
@@ -160,12 +159,18 @@ class ReceiptsViewController: UIViewController {
     }
     
     private func loadMonths() {
+        print("\n=== Loading Months ===")
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            print("Fetching months on background thread")
             let months = self?.fileManager.getAllMonths() ?? []
+            print("Found months: \(months)")
             
             DispatchQueue.main.async {
+                print("Updating UI with months")
                 self?.months = months
                 self?.needsReload = false
+                self?.tableView.reloadData()
+                print("Months array updated and table view reloaded: \(self?.months ?? [])")
             }
         }
     }
@@ -176,7 +181,7 @@ class ReceiptsViewController: UIViewController {
     }
     
     @objc private func folderButtonTapped() {
-        guard let user = GIDSignIn.sharedInstance.currentUser else { return }
+        if GIDSignIn.sharedInstance.currentUser == nil { return }
         
         // Get the root folder ID and open its URL
         GoogleDriveService.shared.getRootFolderId { result in
@@ -227,6 +232,9 @@ class ReceiptsViewController: UIViewController {
 // MARK: - UITableViewDelegate & DataSource
 extension ReceiptsViewController: UITableViewDelegate, UITableViewDataSource {
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
+        print("\n=== Table View Data Source ===")
+        print("Number of months: \(months.count)")
+        print("Months: \(months)")
         return months.count
     }
     
@@ -234,6 +242,8 @@ extension ReceiptsViewController: UITableViewDelegate, UITableViewDataSource {
         let cell = tableView.dequeueReusableCell(withIdentifier: "MonthCell", for: indexPath) as! MonthCell
         let month = months[indexPath.row]
         let receipts = fileManager.getReceiptsInMonth(month)
+        print("Configuring cell for month: \(month)")
+        print("Found \(receipts.count) receipts")
         cell.configure(monthName: month, receiptCount: receipts.count)
         return cell
     }
@@ -241,6 +251,7 @@ extension ReceiptsViewController: UITableViewDelegate, UITableViewDataSource {
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
         let month = months[indexPath.row]
+        print("Selected month: \(month)")
         let receiptsVC = MonthReceiptsViewController(monthName: month)
         navigationController?.pushViewController(receiptsVC, animated: true)
     }

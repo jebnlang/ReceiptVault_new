@@ -70,13 +70,12 @@ class GoogleDriveService {
                 handleAuthenticationSuccess(with: signInResult.user, completion: completion)
             } catch {
                 print("Authentication error: \(error.localizedDescription)")
-                if let error = error as? NSError {
-                    print("Error domain: \(error.domain)")
-                    print("Error code: \(error.code)")
-                    print("Error user info: \(error.userInfo)")
-                }
+                let nsError = error as NSError
+                print("Error domain: \(nsError.domain)")
+                print("Error code: \(nsError.code)")
+                print("Error user info: \(nsError.userInfo)")
                 
-                if (error as NSError).code == GIDSignInError.canceled.rawValue {
+                if nsError.code == GIDSignInError.canceled.rawValue {
                     completion(.failure(NSError(domain: "com.receiptvault", code: -1, 
                         userInfo: [NSLocalizedDescriptionKey: "Sign-in was canceled"])))
                 } else {

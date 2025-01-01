@@ -127,7 +127,7 @@ class MainViewController: UIViewController {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             view.backgroundColor = AppTheme.backgroundColor
-            title = "סריקה"
+            title = "הוספת קבלה"
             
             view.addSubview(logoImageView)
             view.addSubview(scanButton)

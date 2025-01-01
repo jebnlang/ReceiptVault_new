@@ -36,19 +36,47 @@ class ReceiptsViewController: UIViewController {
     
     private lazy var subtitleLabel: UILabel = {
         let label = UILabel()
-        label.text = "כל הקבלות שלך מאורגנות לפי חודשים"
+        label.text = "בחר מקור אחסון"
         label.font = .systemFont(ofSize: 16)
         label.textColor = .secondaryLabel
         label.textAlignment = .right
         return label
     }()
+
+    private lazy var storageOptionsStackView: UIStackView = {
+        let stack = UIStackView()
+        stack.axis = .vertical
+        stack.spacing = AppTheme.padding
+        stack.distribution = .fillEqually
+        return stack
+    }()
     
-    private lazy var folderButton: UIButton = {
+    private lazy var googleDriveButton: UIButton = {
+        let button = UIButton(type: .system)
+        let config = UIImage.SymbolConfiguration(pointSize: 18, weight: .medium)
+        let driveImage = UIImage(systemName: "cloud.fill", withConfiguration: config)
+        button.setImage(driveImage, for: .normal)
+        button.setTitle("Google Drive", for: .normal)
+        button.titleLabel?.font = .systemFont(ofSize: 16, weight: .medium)
+        button.imageEdgeInsets = UIEdgeInsets(top: 0, left: -8, bottom: 0, right: 8)
+        button.backgroundColor = .systemBlue
+        button.tintColor = .white
+        button.setTitleColor(.white, for: .normal)
+        button.layer.cornerRadius = AppTheme.cornerRadius
+        AppTheme.applyShadow(to: button)
+        button.heightAnchor.constraint(equalToConstant: 44).isActive = true
+        button.isEnabled = GIDSignIn.sharedInstance.currentUser != nil
+        button.alpha = GIDSignIn.sharedInstance.currentUser != nil ? 1 : 0.5
+        button.addTarget(self, action: #selector(googleDriveButtonTapped), for: .touchUpInside)
+        return button
+    }()
+    
+    private lazy var localStorageButton: UIButton = {
         let button = UIButton(type: .system)
         let config = UIImage.SymbolConfiguration(pointSize: 18, weight: .medium)
         let folderImage = UIImage(systemName: "folder.fill", withConfiguration: config)
         button.setImage(folderImage, for: .normal)
-        button.setTitle("פתח תיקייה בגוגל דרייב", for: .normal)
+        button.setTitle("אחסון מקומי", for: .normal)
         button.titleLabel?.font = .systemFont(ofSize: 16, weight: .medium)
         button.imageEdgeInsets = UIEdgeInsets(top: 0, left: -8, bottom: 0, right: 8)
         button.backgroundColor = .systemGreen
@@ -57,32 +85,8 @@ class ReceiptsViewController: UIViewController {
         button.layer.cornerRadius = AppTheme.cornerRadius
         AppTheme.applyShadow(to: button)
         button.heightAnchor.constraint(equalToConstant: 44).isActive = true
-        button.isEnabled = GIDSignIn.sharedInstance.currentUser != nil
-        button.alpha = GIDSignIn.sharedInstance.currentUser != nil ? 1 : 0.5
-        button.addTarget(self, action: #selector(folderButtonTapped), for: .touchUpInside)
+        button.addTarget(self, action: #selector(localStorageButtonTapped), for: .touchUpInside)
         return button
-    }()
-    
-    private lazy var segmentedControl: UISegmentedControl = {
-        let control = UISegmentedControl(items: ["רשימה", "תצוגה מקדימה"])
-        control.selectedSegmentIndex = 0
-        control.backgroundColor = .clear
-        control.selectedSegmentTintColor = AppTheme.primaryColor
-        control.setTitleTextAttributes([.foregroundColor: UIColor.secondaryLabel], for: .normal)
-        control.setTitleTextAttributes([.foregroundColor: UIColor.white], for: .selected)
-        control.addTarget(self, action: #selector(viewModeChanged(_:)), for: .valueChanged)
-        return control
-    }()
-    
-    private lazy var tableView: UITableView = {
-        let table = UITableView(frame: .zero, style: .insetGrouped)
-        table.register(MonthCell.self, forCellReuseIdentifier: "MonthCell")
-        table.delegate = self
-        table.dataSource = self
-        table.backgroundColor = AppTheme.backgroundColor
-        table.separatorStyle = .none
-        table.contentInset = UIEdgeInsets(top: 0, left: 0, bottom: AppTheme.padding, right: 0)
-        return table
     }()
     
     // MARK: - Lifecycle
@@ -120,11 +124,12 @@ class ReceiptsViewController: UIViewController {
         view.addSubview(headerView)
         headerView.addSubview(titleLabel)
         headerView.addSubview(subtitleLabel)
-        headerView.addSubview(folderButton)
-        view.addSubview(segmentedControl)
-        view.addSubview(tableView)
+        headerView.addSubview(storageOptionsStackView)
         
-        [headerView, titleLabel, subtitleLabel, folderButton, segmentedControl, tableView].forEach {
+        storageOptionsStackView.addArrangedSubview(googleDriveButton)
+        storageOptionsStackView.addArrangedSubview(localStorageButton)
+        
+        [headerView, titleLabel, subtitleLabel, storageOptionsStackView].forEach {
             $0.translatesAutoresizingMaskIntoConstraints = false
         }
         
@@ -141,20 +146,10 @@ class ReceiptsViewController: UIViewController {
             subtitleLabel.leadingAnchor.constraint(equalTo: headerView.leadingAnchor, constant: AppTheme.padding),
             subtitleLabel.trailingAnchor.constraint(equalTo: headerView.trailingAnchor, constant: -AppTheme.padding),
             
-            folderButton.topAnchor.constraint(equalTo: subtitleLabel.bottomAnchor, constant: AppTheme.padding * 1.5),
-            folderButton.leadingAnchor.constraint(equalTo: headerView.leadingAnchor, constant: AppTheme.padding),
-            folderButton.trailingAnchor.constraint(equalTo: headerView.trailingAnchor, constant: -AppTheme.padding),
-            folderButton.bottomAnchor.constraint(equalTo: headerView.bottomAnchor, constant: -AppTheme.padding),
-            
-            segmentedControl.topAnchor.constraint(equalTo: headerView.bottomAnchor, constant: AppTheme.padding),
-            segmentedControl.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: AppTheme.padding),
-            segmentedControl.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -AppTheme.padding),
-            segmentedControl.heightAnchor.constraint(equalToConstant: 32),
-            
-            tableView.topAnchor.constraint(equalTo: segmentedControl.bottomAnchor, constant: AppTheme.padding),
-            tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            tableView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+            storageOptionsStackView.topAnchor.constraint(equalTo: subtitleLabel.bottomAnchor, constant: AppTheme.padding * 1.5),
+            storageOptionsStackView.leadingAnchor.constraint(equalTo: headerView.leadingAnchor, constant: AppTheme.padding),
+            storageOptionsStackView.trailingAnchor.constraint(equalTo: headerView.trailingAnchor, constant: -AppTheme.padding),
+            storageOptionsStackView.bottomAnchor.constraint(equalTo: headerView.bottomAnchor, constant: -AppTheme.padding)
         ])
     }
     
@@ -169,8 +164,6 @@ class ReceiptsViewController: UIViewController {
                 print("Updating UI with months")
                 self?.months = months
                 self?.needsReload = false
-                self?.tableView.reloadData()
-                print("Months array updated and table view reloaded: \(self?.months ?? [])")
             }
         }
     }
@@ -180,7 +173,7 @@ class ReceiptsViewController: UIViewController {
         viewMode = sender.selectedSegmentIndex == 0 ? .list : .grid
     }
     
-    @objc private func folderButtonTapped() {
+    @objc private func googleDriveButtonTapped() {
         if GIDSignIn.sharedInstance.currentUser == nil { return }
         
         // Get the root folder ID and open its URL
@@ -198,6 +191,11 @@ class ReceiptsViewController: UIViewController {
                 }
             }
         }
+    }
+    
+    @objc private func localStorageButtonTapped() {
+        let localStorageVC = LocalStorageViewController()
+        navigationController?.pushViewController(localStorageVC, animated: true)
     }
     
     private func updateViewMode() {
@@ -221,8 +219,8 @@ class ReceiptsViewController: UIViewController {
     
     private func updateFolderButtonState() {
         let isAuthenticated = GIDSignIn.sharedInstance.currentUser != nil
-        folderButton.isEnabled = isAuthenticated
-        folderButton.alpha = isAuthenticated ? 1 : 0.5
+        googleDriveButton.isEnabled = isAuthenticated
+        googleDriveButton.alpha = isAuthenticated ? 1 : 0.5
     }
     
     // Add property to track reload state

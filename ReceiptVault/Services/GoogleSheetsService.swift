@@ -95,6 +95,9 @@ class GoogleSheetsService {
         // Move the sheet to the correct folder
         try await GoogleDriveService.shared.moveFile(fileId: sheetId, toFolder: folderId)
         
+        // Set up headers and formatting for the new sheet
+        try await setupSheetHeaders(spreadsheetId: sheetId)
+        
         return sheetId
     }
     

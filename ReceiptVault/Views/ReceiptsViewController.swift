@@ -168,7 +168,7 @@ class ReceiptsViewController: UIViewController {
     private func setupTableView() {
         view.addSubview(tableView)
         NSLayoutConstraint.activate([
-            tableView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            tableView.topAnchor.constraint(equalTo: headerView.bottomAnchor),
             tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             tableView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
@@ -185,21 +185,30 @@ class ReceiptsViewController: UIViewController {
     }
     
     @objc private func googleDriveButtonTapped() {
-        if GIDSignIn.sharedInstance.currentUser == nil { return }
+        print("\n=== Google Drive Button Tapped ===")
+        if GIDSignIn.sharedInstance.currentUser == nil {
+            print("❌ No user signed in")
+            return
+        }
+        print("✓ User is signed in")
         
         // Get the root folder ID and open its URL
         Task {
             do {
+                print("Getting root folder ID...")
                 let folderId = try await GoogleDriveService.shared.getRootFolderId()
+                print("✓ Got folder ID: \(folderId)")
                 if let url = URL(string: "https://drive.google.com/drive/folders/\(folderId)") {
+                    print("Opening URL: \(url)")
                     await MainActor.run {
                         UIApplication.shared.open(url)
                     }
                 }
             } catch {
-                print("Failed to get root folder ID: \(error)")
+                print("❌ Failed to get root folder ID: \(error)")
                 // Fallback to opening the main Drive URL
                 if let url = URL(string: "https://drive.google.com") {
+                    print("Opening fallback URL: \(url)")
                     await MainActor.run {
                         UIApplication.shared.open(url)
                     }
@@ -209,7 +218,9 @@ class ReceiptsViewController: UIViewController {
     }
     
     @objc private func localStorageButtonTapped() {
+        print("\n=== Local Storage Button Tapped ===")
         let localStorageVC = LocalStorageViewController()
+        print("Pushing LocalStorageViewController")
         navigationController?.pushViewController(localStorageVC, animated: true)
     }
     

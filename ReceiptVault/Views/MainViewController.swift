@@ -370,9 +370,19 @@ class MainViewController: UIViewController {
         print("Scale: \(image.scale)")
         print("Orientation: \(image.imageOrientation.rawValue)")
         
+        // Show loading UI
+        let loadingVC = LoadingViewController()
+        loadingVC.modalPresentationStyle = .overFullScreen
+        loadingVC.modalTransitionStyle = .crossDissolve
+        present(loadingVC, animated: true)
+        
         Task {
             do {
+                // Update to preparing stage
+                loadingVC.updateStage(.preparing, withProgress: 0.0)
+                
                 print("\nStarting AI extraction...")
+                loadingVC.updateStage(.analyzingReceipt, withProgress: 0.2)
                 let extractedData = try await AzureDocumentService.shared.extractReceiptData(from: image)
                 print("✓ AI extraction complete")
                 print("Extracted data: \(extractedData)")
@@ -392,6 +402,7 @@ class MainViewController: UIViewController {
                     print("⚠️ No date found, using current month: \(monthName)")
                 }
                 
+                loadingVC.updateStage(.creatingPDF, withProgress: 0.4)
                 print("\nCreating PDF from image...")
                 if let pdfData = self.createPDFFromImage(image) {
                     let fileName = "Receipt_\(self.formatDate()).pdf"
@@ -402,13 +413,19 @@ class MainViewController: UIViewController {
                         print("✓ Saved to local storage")
                         
                         if self.isAuthenticated {
+                            loadingVC.updateStage(.uploadingToDrive, withProgress: 0.6)
                             print("\nUploading to Google Drive...")
                             try await self.googleDriveService.uploadReceiptWithData(image: image, extractedData: extractedData)
                             print("✓ Uploaded to Google Drive")
-                            self.showAlert(title: "הצלחה", message: "הקבלה נשמרה בהצלחה והועלתה ל-Google Drive")
+                            
+                            loadingVC.updateStage(.updatingSheet, withProgress: 0.8)
+                            // Wait for sheet update
+                            try await Task.sleep(nanoseconds: 1_000_000_000)
+                            
+                            loadingVC.updateStage(.complete, withProgress: 1.0)
                         } else {
                             print("⚠️ Not authenticated, skipping Google Drive upload")
-                            self.showAlert(title: "הצלחה", message: "הקבלה נשמרה בהצלחה במכשיר")
+                            loadingVC.updateStage(.complete, withProgress: 1.0)
                         }
                     } else {
                         print("❌ Failed to save locally")
@@ -425,7 +442,9 @@ class MainViewController: UIViewController {
                 if let azureError = error as? AzureError {
                     print("Azure error type: \(azureError)")
                 }
-                self.handleAzureError(error)
+                loadingVC.dismiss(animated: true) {
+                    self.handleAzureError(error)
+                }
             }
         }
     }
@@ -728,10 +747,17 @@ extension MainViewController: VNDocumentCameraViewControllerDelegate {
             
             print("📸 Camera UI dismissed successfully")
             
+            // Show loading UI
+            let loadingVC = LoadingViewController()
+            loadingVC.modalPresentationStyle = .overFullScreen
+            loadingVC.modalTransitionStyle = .crossDissolve
+            self.present(loadingVC, animated: true)
+            
             // Handle multiple pages
             let pageCount = scan.pageCount
             var allImages: [UIImage] = []
             
+            loadingVC.updateStage(.preparing, withProgress: 0.0)
             print("📄 Processing \(pageCount) scanned pages...")
             
             // Collect all scanned pages
@@ -749,8 +775,10 @@ extension MainViewController: VNDocumentCameraViewControllerDelegate {
                     print("\n=== Starting Batch Processing ===")
                     // Process each image
                     for (index, image) in allImages.enumerated() {
+                        let progress = Float(index) / Float(allImages.count)
                         print("\n📝 Processing Receipt \(index + 1) of \(allImages.count)")
                         
+                        loadingVC.updateStage(.analyzingReceipt, withProgress: 0.2 + progress * 0.2)
                         print("🔍 Starting Azure AI analysis...")
                         let extractedData = try await AzureDocumentService.shared.extractReceiptData(from: image)
                         print("✓ AI Analysis complete")
@@ -772,6 +800,7 @@ extension MainViewController: VNDocumentCameraViewControllerDelegate {
                             print("⚠️ No date found, using current month: \(monthName)")
                         }
                         
+                        loadingVC.updateStage(.creatingPDF, withProgress: 0.4 + progress * 0.2)
                         print("\n💾 Creating PDF...")
                         if let pdfData = self.createPDFFromImage(image) {
                             let fileName = "Receipt_\(self.formatDate())_\(index + 1).pdf"
@@ -782,55 +811,61 @@ extension MainViewController: VNDocumentCameraViewControllerDelegate {
                                 print("✓ Saved locally")
                                 
                                 if self.isAuthenticated {
+                                    loadingVC.updateStage(.uploadingToDrive, withProgress: 0.6 + progress * 0.2)
                                     print("\n☁️ Starting Google Drive upload...")
                                     print("Token status: \(String(describing: GIDSignIn.sharedInstance.currentUser?.accessToken))")
                                     try await self.googleDriveService.uploadReceiptWithData(image: image, extractedData: extractedData)
                                     print("✓ Uploaded to Google Drive")
+                                    
+                                    loadingVC.updateStage(.updatingSheet, withProgress: 0.8 + progress * 0.2)
+                                    // Wait for sheet update
+                                    try await Task.sleep(nanoseconds: 1_000_000_000)
                                 } else {
                                     print("ℹ️ Skipping Google Drive upload - Not authenticated")
                                 }
                             } else {
                                 print("❌ Failed to save locally")
-                                self.showAlert(title: "שגיאה", message: "שגיאה בשמירת הקבלה \(index + 1)")
+                                loadingVC.dismiss(animated: true) {
+                                    self.showAlert(title: "שגיאה", message: "שגיאה בשמירת הקבלה \(index + 1)")
+                                }
                                 return
                             }
                         } else {
                             print("❌ Failed to create PDF")
-                            self.showAlert(title: "שגיאה", message: "שגיאה ביצירת קובץ PDF")
+                            loadingVC.dismiss(animated: true) {
+                                self.showAlert(title: "שגיאה", message: "שגיאה ביצירת קובץ PDF")
+                            }
                             return
                         }
                     }
                     
                     print("\n=== Batch Processing Complete ===")
-                    // Show success message after all receipts are processed
-                    if self.isAuthenticated {
-                        self.showAlert(title: "הצלחה", message: "כל הקבלות נשמרו בהצלחה והועלו ל-Google Drive")
-                    } else {
-                        self.showAlert(title: "הצלחה", message: "כל הקבלות נשמרו בהצלחה במכשיר")
-                    }
+                    loadingVC.updateStage(.complete, withProgress: 1.0)
                 } catch {
                     print("\n❌ Error in batch processing:")
                     print("Error type: \(type(of: error))")
                     print("Error description: \(error.localizedDescription)")
                     
-                    // Enhanced error handling with type safety
-                    switch error {
-                    case let azureError as AzureError:
-                        print("Azure error details: \(azureError)")
-                        self.handleAzureError(azureError)
-                    case let urlError as URLError:
-                        print("Network error: \(urlError.localizedDescription)")
-                        self.showAlert(title: "שגיאה", message: "שגיאת רשת: \(urlError.localizedDescription)")
-                    default:
-                        // Handle NSError properties if available
-                        let nsError = error as NSError
-                        print("Domain: \(nsError.domain)")
-                        print("Code: \(nsError.code)")
-                        print("User Info: \(nsError.userInfo)")
-                        
-                        // Generic error handling
-                        let errorMessage = nsError.localizedDescription
-                        self.showAlert(title: "שגיאה", message: "שגיאה לא צפויה: \(errorMessage)")
+                    loadingVC.dismiss(animated: true) {
+                        // Enhanced error handling with type safety
+                        switch error {
+                        case let azureError as AzureError:
+                            print("Azure error details: \(azureError)")
+                            self.handleAzureError(azureError)
+                        case let urlError as URLError:
+                            print("Network error: \(urlError.localizedDescription)")
+                            self.showAlert(title: "שגיאה", message: "שגיאת רשת: \(urlError.localizedDescription)")
+                        default:
+                            // Handle NSError properties if available
+                            let nsError = error as NSError
+                            print("Domain: \(nsError.domain)")
+                            print("Code: \(nsError.code)")
+                            print("User Info: \(nsError.userInfo)")
+                            
+                            // Generic error handling
+                            let errorMessage = nsError.localizedDescription
+                            self.showAlert(title: "שגיאה", message: "שגיאה לא צפויה: \(errorMessage)")
+                        }
                     }
                 }
             }

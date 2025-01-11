@@ -20,64 +20,65 @@ class GoogleDriveService {
     
     // MARK: - Authentication
     func authenticate(from viewController: UIViewController, completion: @escaping (Result<Void, Error>) -> Void) {
-        // Using comprehensive scopes for testing
         let scopes = [
-            "https://www.googleapis.com/auth/drive.file",     // For files created by the app
-            "https://www.googleapis.com/auth/drive.metadata", // For updating metadata
-            "https://www.googleapis.com/auth/drive.appdata"   // For application data folder
+            "https://www.googleapis.com/auth/drive.file",
+            "https://www.googleapis.com/auth/drive.metadata",
+            "https://www.googleapis.com/auth/drive.appdata"
         ]
         
         print("Requesting scopes: \(scopes)")
         
-        // First check if we already have a valid session
-        if let currentUser = GIDSignIn.sharedInstance.currentUser,
-           !currentUser.accessToken.tokenString.isEmpty,
-           let expirationDate = currentUser.accessToken.expirationDate,
-           expirationDate > Date(),
-           Set(currentUser.grantedScopes ?? []).isSuperset(of: scopes) {
-            print("Found valid existing session")
-            handleAuthenticationSuccess(with: currentUser, completion: completion)
+        // Ensure we're on the main thread for UI operations
+        if !Thread.isMainThread {
+            DispatchQueue.main.async {
+                self.authenticate(from: viewController, completion: completion)
+            }
             return
         }
         
-        // If no valid session, try to restore previous sign-in
-        Task { @MainActor in  // Ensure we're on the main thread
+        Task { @MainActor in
             do {
-                let currentUser = try await GIDSignIn.sharedInstance.restorePreviousSignIn()
-                // Check if we have all required scopes
+                // First try to restore previous sign-in
+                if let currentUser = try? await GIDSignIn.sharedInstance.restorePreviousSignIn() {
+                    print("Restored previous sign-in")
                 if Set(currentUser.grantedScopes ?? []).isSuperset(of: scopes) {
-                    print("Restored previous sign-in with correct scopes")
-                    print("Granted scopes: \(currentUser.grantedScopes ?? [])")
-                    handleAuthenticationSuccess(with: currentUser, completion: completion)
+                        print("✓ Previous session has all required scopes")
+                        await self.handleAuthenticationSuccess(with: currentUser, completion: completion)
                     return
                 } else {
-                    print("Missing required scopes. Need to request additional permissions.")
-                    print("Current scopes: \(currentUser.grantedScopes ?? [])")
-                    print("Required scopes: \(scopes)")
+                        print("Previous session missing required scopes")
+                    }
                 }
-            } catch {
-                print("No previous sign-in to restore or error: \(error.localizedDescription)")
-            }
-            
-            // If we get here, we need a new sign-in
-            do {
+                
+                // If restore failed or missing scopes, try new sign in
+                print("Attempting new sign in")
                 let signInResult = try await GIDSignIn.sharedInstance.signIn(
                     withPresenting: viewController,
                     hint: nil,
                     additionalScopes: scopes
                 )
-                print("New sign-in successful")
-                handleAuthenticationSuccess(with: signInResult.user, completion: completion)
-            } catch {
-                print("Authentication error: \(error.localizedDescription)")
-                let nsError = error as NSError
-                print("Error domain: \(nsError.domain)")
-                print("Error code: \(nsError.code)")
-                print("Error user info: \(nsError.userInfo)")
                 
-                if nsError.code == GIDSignInError.canceled.rawValue {
-                    completion(.failure(NSError(domain: "com.receiptvault", code: -1, 
-                        userInfo: [NSLocalizedDescriptionKey: "Sign-in was canceled"])))
+                print("New sign-in successful")
+                print("Granted scopes: \(signInResult.user.grantedScopes ?? [])")
+                await self.handleAuthenticationSuccess(with: signInResult.user, completion: completion)
+                
+            } catch let error as NSError {
+                print("Authentication error: \(error.localizedDescription)")
+                print("Error domain: \(error.domain)")
+                print("Error code: \(error.code)")
+                
+                if error.code == GIDSignInError.canceled.rawValue {
+                    completion(.failure(NSError(
+                        domain: "com.receiptvault",
+                        code: -1,
+                        userInfo: [NSLocalizedDescriptionKey: "ההתחברות בוטלה"]
+                    )))
+                } else if error.code == GIDSignInError.hasNoAuthInKeychain.rawValue {
+                    completion(.failure(NSError(
+                        domain: "com.receiptvault",
+                        code: -2,
+                        userInfo: [NSLocalizedDescriptionKey: "נדרשת התחברות מחדש"]
+                    )))
                 } else {
                     completion(.failure(error))
                 }
@@ -85,207 +86,138 @@ class GoogleDriveService {
         }
     }
     
-    private func handleAuthenticationSuccess(with user: GIDGoogleUser, completion: @escaping (Result<Void, Error>) -> Void) {
+    private func handleAuthenticationSuccess(with user: GIDGoogleUser, completion: @escaping (Result<Void, Error>) -> Void) async {
         // Check if token needs refresh
         let currentDate = Date()
         if let expirationDate = user.accessToken.expirationDate,
            expirationDate.compare(currentDate) == .orderedAscending {
-            Task {
                 do {
                     try await user.refreshTokensIfNeeded()
                     print("Successfully refreshed tokens")
                 } catch {
                     print("Error refreshing tokens: \(error.localizedDescription)")
-                    DispatchQueue.main.async {
+                await MainActor.run {
                         completion(.failure(error))
                     }
                     return
-                }
             }
         }
         
         let accessToken = user.accessToken.tokenString
         
         // Create root folder if it doesn't exist
-        createRootFolderIfNeeded(accessToken: accessToken) { result in
-            DispatchQueue.main.async {
-                switch result {
-                case .success:
+        do {
+            let _ = try await createRootFolderIfNeeded()
+            await MainActor.run {
                     completion(.success(()))
-                case .failure(let error):
+            }
+        } catch {
+            print("Error creating root folder: \(error.localizedDescription)")
+            await MainActor.run {
                     completion(.failure(error))
-                }
             }
         }
     }
     
     // MARK: - Upload Methods
-    func uploadReceipt(image: UIImage, completion: @escaping (Result<Void, Error>) -> Void) {
-        guard let accessToken = GIDSignIn.sharedInstance.currentUser?.accessToken.tokenString else {
-            DispatchQueue.main.async {
-                completion(.failure(NSError(domain: "com.receiptvault", code: -1, userInfo: [NSLocalizedDescriptionKey: "Not authenticated"])))
-            }
-            return
-        }
-        
-        Task {
-            do {
-                // Extract all receipt data using Gemini
-                let extractedData = try await GeminiService.shared.extractReceiptData(from: image)
-                print("Extracted receipt data: \(extractedData)")
-                
-                // Convert image to JPEG data
-                guard let imageData = image.jpegData(compressionQuality: 0.8) else {
-                    throw NSError(domain: "com.receiptvault", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to process image"])
-                }
-                
-                // Convert JPEG to PDF
-                guard let pdfData = createPDFFromImageData(imageData) else {
-                    throw NSError(domain: "com.receiptvault", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to create PDF"])
-                }
-                
-                print("PDF creation successful. Size: \(pdfData.count) bytes")
-                
-                // Get current month folder
-                let monthFolderName = getCurrentMonthName()
-                
-                // Create root folder if needed
-                let rootFolderId = try await withCheckedThrowingContinuation { continuation in
-                    createRootFolderIfNeeded(accessToken: accessToken) { result in
-                        continuation.resume(with: result)
-                    }
-                }
-                
-                print("Root folder ID: \(rootFolderId)")
-                
-                // Create month folder if needed
-                let monthFolderId = try await withCheckedThrowingContinuation { continuation in
-                    createMonthFolderIfNeeded(accessToken: accessToken, monthName: monthFolderName, parentId: rootFolderId) { result in
-                        continuation.resume(with: result)
-                    }
-                }
-                
-                print("Month folder ID: \(monthFolderId)")
-                
-                // Ensure monthly summary sheet exists and get its ID
-                let currentDate = Date()
-                let calendar = Calendar.current
-                let month = calendar.component(.month, from: currentDate)
-                let year = calendar.component(.year, from: currentDate)
-                
-                let sheetId = try await GoogleSheetsService.shared.ensureMonthlySheet(
-                    in: monthFolderId,
-                    month: month,
-                    year: year
-                )
-                
-                print("Sheet ID: \(sheetId)")
-                
-                // Upload the PDF
-                try await withCheckedThrowingContinuation { continuation in
-                    uploadPDF(
-                        accessToken: accessToken,
-                        pdfData: pdfData,
-                        businessName: extractedData["שם העסק"] ?? "Unknown",
-                        folderId: monthFolderId
-                    ) { result in
-                        continuation.resume(with: result)
-                    }
-                }
-                
-                // Add the extracted data to the sheet
-                try await GoogleSheetsService.shared.addReceiptData(
-                    to: sheetId,
-                    extractedData: extractedData
-                )
-                
-                DispatchQueue.main.async {
-                    completion(.success(()))
-                }
-            } catch {
-                print("Error in upload process: \(error.localizedDescription)")
-                DispatchQueue.main.async {
-                    completion(.failure(error))
-                }
-            }
-        }
-    }
-    
-    func uploadReceiptWithData(image: UIImage, extractedData: [String: String]) async throws {
+    func uploadReceipt(image: UIImage) async throws {
         guard let accessToken = GIDSignIn.sharedInstance.currentUser?.accessToken.tokenString else {
             throw NSError(domain: "com.receiptvault", code: -1, userInfo: [NSLocalizedDescriptionKey: "Not authenticated"])
         }
         
-        // Convert image to JPEG data
-        guard let imageData = image.jpegData(compressionQuality: 0.8) else {
-            throw NSError(domain: "com.receiptvault", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to process image"])
+        // Extract all receipt data using AzureDocumentService
+        let extractedData = try await AzureDocumentService.shared.extractReceiptData(from: image)
+                print("Extracted receipt data: \(extractedData)")
+                
+        // Use the uploadReceiptWithData method which is already async
+        try await uploadReceiptWithData(image: image, extractedData: extractedData)
+    }
+    
+    func uploadReceiptWithData(image: UIImage, extractedData: [String: String]) async throws {
+        print("\n=== Starting Google Drive Upload Process ===")
+        
+        guard let accessToken = GIDSignIn.sharedInstance.currentUser?.accessToken.tokenString else {
+            print("❌ No access token available")
+            throw NSError(domain: "com.receiptvault", code: -1, userInfo: [NSLocalizedDescriptionKey: "Not authenticated"])
         }
         
-        // Convert JPEG to PDF
-        guard let pdfData = createPDFFromImageData(imageData) else {
-            throw NSError(domain: "com.receiptvault", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to create PDF"])
-        }
+        print("✓ Access token available")
         
-        print("PDF creation successful. Size: \(pdfData.count) bytes")
-        
-        // Get month and year from the extracted date or use current date as fallback
-        let (month, year, monthNum, yearNum): (String, String, Int, Int)
-        if let dateStr = extractedData["תאריך"],
-           let date = parseReceiptDate(dateStr) {
-            let dateFormatter = DateFormatter()
-            dateFormatter.locale = Locale(identifier: "he")
-            dateFormatter.dateFormat = "MMMM"
-            month = dateFormatter.string(from: date)
-            dateFormatter.dateFormat = "yyyy"
-            year = dateFormatter.string(from: date)
-            
-            let calendar = Calendar.current
-            monthNum = calendar.component(.month, from: date)
-            yearNum = calendar.component(.year, from: date)
-        } else {
-            let currentDate = Date()
-            let dateFormatter = DateFormatter()
-            dateFormatter.locale = Locale(identifier: "he")
-            dateFormatter.dateFormat = "MMMM"
-            month = dateFormatter.string(from: currentDate)
-            dateFormatter.dateFormat = "yyyy"
-            year = dateFormatter.string(from: currentDate)
-            
-            let calendar = Calendar.current
-            monthNum = calendar.component(.month, from: currentDate)
-            yearNum = calendar.component(.year, from: currentDate)
-        }
-        
-        // Create month folder if needed
-        let monthFolderId = try await ensureMonthFolder(accessToken: accessToken, month: month, year: year)
-        print("Month folder ID: \(monthFolderId)")
-        
-        // Ensure monthly sheet exists
-        let sheetId = try await GoogleSheetsService.shared.ensureMonthlySheet(
-            in: monthFolderId,
-            month: monthNum,
-            year: yearNum
-        )
-        
-        print("Sheet ID: \(sheetId)")
-        
-        // Upload the PDF
-        try await withCheckedThrowingContinuation { continuation in
-            uploadPDF(
-                accessToken: accessToken,
-                pdfData: pdfData,
-                businessName: extractedData["שם העסק"] ?? "Unknown",
-                folderId: monthFolderId
-            ) { result in
-                continuation.resume(with: result)
+        do {
+            // Convert image to JPEG data
+            guard let imageData = image.jpegData(compressionQuality: 0.8) else {
+                print("❌ Failed to convert image to JPEG")
+                throw NSError(domain: "com.receiptvault", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to process image"])
             }
+            
+            print("✓ Image converted to JPEG - Size: \(imageData.count) bytes")
+            
+            // Convert JPEG to PDF
+            guard let pdfData = createPDFFromImageData(imageData) else {
+                print("❌ Failed to create PDF from image")
+                throw NSError(domain: "com.receiptvault", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to create PDF"])
+            }
+            
+            print("✓ PDF created - Size: \(pdfData.count) bytes")
+            
+            // Get month and year
+            print("\n📅 Processing date information...")
+            let (month, year, monthNum, yearNum) = extractDateInfo(from: extractedData)
+            
+            print("\n📁 Creating folder structure...")
+            // Create month folder if needed
+            print("Ensuring month folder exists...")
+            let monthFolderId = try await ensureMonthFolder(accessToken: accessToken, month: month, year: year)
+            print("✓ Month folder ID: \(monthFolderId)")
+            
+            // Ensure monthly sheet exists and get its ID
+            print("\n📊 Setting up Google Sheet...")
+            let sheetId: String
+            do {
+                sheetId = try await GoogleSheetsService.shared.ensureMonthlySheet(
+                    in: monthFolderId,
+                    month: monthNum,
+                    year: yearNum
+                )
+                print("✓ Sheet ID: \(sheetId)")
+            } catch {
+                print("❌ Failed to ensure monthly sheet: \(error)")
+                throw GoogleDriveError.sheetCreationFailed(error)
+            }
+            
+            // Upload the PDF first
+            print("\n📤 Uploading PDF...")
+            do {
+                try await uploadPDF(
+                    accessToken: accessToken,
+                    pdfData: pdfData,
+                    businessName: extractedData["שם העסק"] ?? "Unknown",
+                    folderId: monthFolderId
+                )
+                print("✓ PDF uploaded successfully")
+            } catch {
+                print("❌ Failed to upload PDF: \(error)")
+                throw GoogleDriveError.uploadFailed
+            }
+            
+            // Add the extracted data to the sheet
+            print("\n📝 Updating Google Sheet...")
+            do {
+                try await GoogleSheetsService.shared.addReceiptData(
+                    to: sheetId,
+                    extractedData: extractedData
+                )
+                print("✓ Sheet updated successfully")
+            } catch {
+                print("❌ Failed to update sheet: \(error)")
+                throw GoogleDriveError.sheetUpdateFailed(error)
+            }
+            
+            print("\n=== Google Drive Upload Process Complete ===")
+        } catch {
+            print("❌ Upload process failed: \(error)")
+            throw error
         }
-        
-        // Add the extracted data to the sheet
-        try await GoogleSheetsService.shared.addReceiptData(
-            to: sheetId,
-            extractedData: extractedData
-        )
     }
     
     private func parseReceiptDate(_ dateStr: String) -> Date? {
@@ -310,317 +242,119 @@ class GoogleDriveService {
         return data
     }
     
-    private func uploadPDF(accessToken: String, pdfData: Data, businessName: String, folderId: String, completion: @escaping (Result<Void, Error>) -> Void) {
-        // Use 'Receipt' as the prefix if business name is unknown
-        let filePrefix = businessName == "Unknown" ? "Receipt" : businessName
-        let fileName = "\(filePrefix)_\(formatDate()).pdf"
+    private func uploadPDF(accessToken: String, pdfData: Data, businessName: String, folderId: String) async throws {
+        print("Starting PDF upload process...")
         
-        // Step 1: Create empty file with metadata
-        createEmptyFile(name: fileName, folderId: folderId, accessToken: accessToken) { [weak self] result in
-            switch result {
-            case .success(let fileId):
-                print("Empty file created with ID: \(fileId)")
-                // Step 2: Upload the actual content
-                self?.uploadContent(fileId: fileId, pdfData: pdfData, accessToken: accessToken, completion: completion)
-            case .failure(let error):
-                print("Failed to create empty file: \(error.localizedDescription)")
-                DispatchQueue.main.async {
-                    completion(.failure(error))
-                }
-            }
-        }
-    }
-    
-    private func createEmptyFile(name: String, folderId: String, accessToken: String, completion: @escaping (Result<String, Error>) -> Void) {
-        let urlString = "\(driveAPI)/files"
-        guard let url = URL(string: urlString) else {
-            completion(.failure(NSError(domain: "com.receiptvault", code: -1, 
-                userInfo: [NSLocalizedDescriptionKey: "Invalid URL"])))
-            return
-        }
-        
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        
+        // Step 1: Create metadata for the file
         let metadata: [String: Any] = [
-            "name": name,
+            "name": "\(businessName)_\(Date().timeIntervalSince1970).pdf",
             "mimeType": "application/pdf",
             "parents": [folderId]
         ]
         
-        do {
-            let jsonData = try JSONSerialization.data(withJSONObject: metadata)
-            request.httpBody = jsonData
-            
-            print("Creating empty file with name: \(name)")
-            
-            let task = URLSession.shared.dataTask(with: request) { data, response, error in
-                if let error = error {
-                    print("Network error creating file: \(error.localizedDescription)")
-                    completion(.failure(error))
-                    return
-                }
-                
-                if let httpResponse = response as? HTTPURLResponse {
-                    print("Create file response status: \(httpResponse.statusCode)")
-                }
-                
-                guard let data = data else {
-                    print("No data in create file response")
-                    completion(.failure(NSError(domain: "com.receiptvault", code: -1, 
-                        userInfo: [NSLocalizedDescriptionKey: "No response data"])))
-                    return
-                }
-                
-                do {
-                    let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-                    if let fileId = json?["id"] as? String {
-                        print("File created successfully")
-                        completion(.success(fileId))
-                    } else {
-                        print("No file ID in response")
-                        if let responseString = String(data: data, encoding: .utf8) {
-                            print("Response: \(responseString)")
-                        }
-                        completion(.failure(NSError(domain: "com.receiptvault", code: -1, 
-                            userInfo: [NSLocalizedDescriptionKey: "Failed to get file ID"])))
-                    }
-                } catch {
-                    print("Failed to parse create file response: \(error)")
-                    if let responseString = String(data: data, encoding: .utf8) {
-                        print("Response: \(responseString)")
-                    }
-                    completion(.failure(error))
-                }
-            }
-            task.resume()
-        } catch {
-            print("Failed to create metadata JSON: \(error)")
-            completion(.failure(error))
-        }
-    }
-    
-    private func uploadContent(fileId: String, pdfData: Data, accessToken: String, completion: @escaping (Result<Void, Error>) -> Void) {
-        // Debug: Print current user's scopes
-        if let currentUser = GIDSignIn.sharedInstance.currentUser {
-            print("Current user email: \(currentUser.profile?.email ?? "No email")")
-            print("Granted scopes: \(currentUser.grantedScopes ?? [])")
-            print("Access token: \(String(describing: currentUser.accessToken))")
-            if let expirationDate = currentUser.accessToken.expirationDate {
-                print("Has expired: \(expirationDate < Date())")
-            } else {
-                print("No expiration date available")
-            }
-        }
-        
-        // Step 1: Get upload URL
-        let urlString = "\(uploadAPI)/files/\(fileId)?uploadType=resumable"  // Using uploadAPI base URL
-        guard let url = URL(string: urlString) else {
-            completion(.failure(NSError(domain: "com.receiptvault", code: -1, 
-                userInfo: [NSLocalizedDescriptionKey: "Invalid URL"])))
-            return
-        }
-        
-        var request = URLRequest(url: url)
-        request.httpMethod = "PATCH"
+        // Step 2: Get upload URL
+        let uploadURL = "\(uploadAPI)/files?uploadType=resumable"
+        var request = URLRequest(url: URL(string: uploadURL)!)
+        request.httpMethod = "POST"
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("application/pdf", forHTTPHeaderField: "X-Upload-Content-Type")
-        request.setValue("\(pdfData.count)", forHTTPHeaderField: "X-Upload-Content-Length")
-        request.timeoutInterval = 30
+        request.setValue("application/json; charset=UTF-8", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: metadata)
         
-        // Add metadata in the request body
-        let metadata: [String: Any] = [
-            "mimeType": "application/pdf"
-        ]
+        let (_, response) = try await URLSession.shared.data(for: request)
         
-        do {
-            let jsonData = try JSONSerialization.data(withJSONObject: metadata)
-            request.httpBody = jsonData
-            
-            print("Initiating resumable upload for file ID: \(fileId)")
-            print("Using URL: \(urlString)")
-            print("Content length: \(pdfData.count)")
-            
-            let task = URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
-                if let error = error {
-                    print("Failed to initiate resumable upload: \(error.localizedDescription)")
-                    DispatchQueue.main.async {
-                        completion(.failure(error))
-                    }
-                    return
-                }
-                
-                guard let httpResponse = response as? HTTPURLResponse else {
-                    print("Invalid response type")
-                    DispatchQueue.main.async {
-                        completion(.failure(NSError(domain: "com.receiptvault", code: -1, 
-                            userInfo: [NSLocalizedDescriptionKey: "Invalid response type"])))
-                    }
-                    return
-                }
-                
-                print("Resumable upload initiation status: \(httpResponse.statusCode)")
-                print("Response headers:")
-                httpResponse.allHeaderFields.forEach { key, value in
-                    print("\(key): \(value)")
-                }
-                
-                guard let uploadURL = httpResponse.allHeaderFields["Location"] as? String else {
-                    print("No upload URL in response")
-                    if let data = data, let responseString = String(data: data, encoding: .utf8) {
-                        print("Response body: \(responseString)")
-                    }
-                    DispatchQueue.main.async {
-                        completion(.failure(NSError(domain: "com.receiptvault", code: -1, 
-                            userInfo: [NSLocalizedDescriptionKey: "No upload URL provided"])))
-                    }
-                    return
-                }
-                
-                print("Got upload URL: \(uploadURL)")
-                self?.performResumableUpload(uploadURL: uploadURL, pdfData: pdfData, completion: completion)
-            }
-            task.resume()
-        } catch {
-            print("Failed to create metadata JSON: \(error)")
-            completion(.failure(error))
-        }
-    }
-    
-    private func performResumableUpload(uploadURL: String, pdfData: Data, completion: @escaping (Result<Void, Error>) -> Void) {
-        guard let url = URL(string: uploadURL) else {
-            completion(.failure(NSError(domain: "com.receiptvault", code: -1, 
-                userInfo: [NSLocalizedDescriptionKey: "Invalid upload URL"])))
-            return
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw NSError(domain: "com.receiptvault", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid response type"])
         }
         
-        var request = URLRequest(url: url)
-        request.httpMethod = "PUT"
-        request.setValue("application/pdf", forHTTPHeaderField: "Content-Type")
-        request.setValue("\(pdfData.count)", forHTTPHeaderField: "Content-Length")
-        request.timeoutInterval = 30 // Standard 30 second timeout
-        
-        print("Starting resumable upload of \(pdfData.count) bytes")
-        
-        let configuration = URLSessionConfiguration.default
-        configuration.timeoutIntervalForResource = 60 // 1 minute total timeout
-        configuration.timeoutIntervalForRequest = 30 // 30 seconds per request
-        
-        let session = URLSession(configuration: configuration)
-        
-        let task = session.uploadTask(with: request, from: pdfData) { data, response, error in
-            if let error = error {
-                print("Resumable upload failed: \(error.localizedDescription)")
-                DispatchQueue.main.async {
-                    completion(.failure(error))
-                }
-                return
-            }
-            
-            if let httpResponse = response as? HTTPURLResponse {
-                print("Resumable upload response status: \(httpResponse.statusCode)")
-                
-                if httpResponse.statusCode == 200 || httpResponse.statusCode == 201 {
-                    print("Resumable upload successful")
-                    DispatchQueue.main.async {
-                        completion(.success(()))
-                    }
-                    return
-                }
-            }
-            
-            if let data = data,
-               let responseString = String(data: data, encoding: .utf8) {
-                print("Upload response: \(responseString)")
-            }
-            
-            DispatchQueue.main.async {
-                completion(.failure(NSError(domain: "com.receiptvault", code: -1, 
-                    userInfo: [NSLocalizedDescriptionKey: "Failed to upload content"])))
-            }
+        guard httpResponse.statusCode == 200,
+              let location = httpResponse.allHeaderFields["Location"] as? String else {
+            throw NSError(domain: "com.receiptvault", code: httpResponse.statusCode, 
+                         userInfo: [NSLocalizedDescriptionKey: "Failed to get upload URL"])
         }
         
-        task.resume()
+        // Step 3: Perform the actual upload
+        var uploadRequest = URLRequest(url: URL(string: location)!)
+        uploadRequest.httpMethod = "PUT"
+        uploadRequest.setValue("application/pdf", forHTTPHeaderField: "Content-Type")
+        uploadRequest.setValue("\(pdfData.count)", forHTTPHeaderField: "Content-Length")
+        
+        let (_, uploadResponse) = try await URLSession.shared.upload(for: uploadRequest, from: pdfData)
+        
+        guard let uploadHttpResponse = uploadResponse as? HTTPURLResponse else {
+            throw NSError(domain: "com.receiptvault", code: -1, 
+                         userInfo: [NSLocalizedDescriptionKey: "Invalid upload response"])
+        }
+        
+        guard uploadHttpResponse.statusCode == 200 || uploadHttpResponse.statusCode == 201 else {
+            throw NSError(domain: "com.receiptvault", code: uploadHttpResponse.statusCode, 
+                         userInfo: [NSLocalizedDescriptionKey: "Upload failed with status \(uploadHttpResponse.statusCode)"])
+        }
+        
+        print("PDF upload completed successfully")
     }
     
     // MARK: - Helper Methods
-    private func createRootFolderIfNeeded(accessToken: String, completion: @escaping (Result<String, Error>) -> Void) {
-        // First check if folder exists
-        let query = "mimeType='application/vnd.google-apps.folder' and name='\(rootFolderName)' and trashed=false"
-        let urlString = "\(driveAPI)/files?q=\(query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")"
-        
-        var request = URLRequest(url: URL(string: urlString)!)
-        request.httpMethod = "GET"
-        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-        
-        let task = URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
-            if let error = error {
-                completion(.failure(error))
-                return
-            }
-            
-            guard let data = data,
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let files = json["files"] as? [[String: Any]] else {
-                completion(.failure(NSError(domain: "com.receiptvault", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid response"])))
-                return
-            }
-            
-            if let existingFolder = files.first,
-               let folderId = existingFolder["id"] as? String {
-                completion(.success(folderId))
-                return
-            }
-            
-            // Folder doesn't exist, create it
-            self?.createFolder(name: self?.rootFolderName ?? "ReceiptVault", parentId: nil, accessToken: accessToken, completion: completion)
+    private func createRootFolderIfNeeded() async throws -> String {
+        guard let currentUser = GIDSignIn.sharedInstance.currentUser else {
+            throw GoogleDriveError.notAuthenticated
         }
-        task.resume()
+        
+        // Check if root folder exists
+        if let existingFolderId = UserDefaults.standard.string(forKey: "rootFolderId") {
+            // Verify the folder still exists and is accessible
+            let (folderExists, _) = try await checkFolderExists(folderId: existingFolderId, accessToken: currentUser.accessToken.tokenString)
+            if folderExists {
+                return existingFolderId
+            }
+        }
+        
+        // Create root folder if it doesn't exist
+        let folderId = try await createFolder(name: rootFolderName, parentId: nil, accessToken: currentUser.accessToken.tokenString)
+        UserDefaults.standard.set(folderId, forKey: "rootFolderId")
+        
+        return folderId
     }
     
-    private func createMonthFolderIfNeeded(accessToken: String, monthName: String, parentId: String, completion: @escaping (Result<String, Error>) -> Void) {
-        // Check if month folder exists
-        let query = "mimeType='application/vnd.google-apps.folder' and name='\(monthName)' and '\(parentId)' in parents and trashed=false"
-        let urlString = "\(driveAPI)/files?q=\(query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")"
+    private func checkFolderExists(folderId: String, accessToken: String) async throws -> (Bool, String?) {
+        let urlString = "\(driveAPI)/files/\(folderId)?fields=id,name,mimeType"
+        guard let url = URL(string: urlString) else {
+            throw GoogleDriveError.invalidURL
+        }
         
-        var request = URLRequest(url: URL(string: urlString)!)
-        request.httpMethod = "GET"
+        var request = URLRequest(url: url)
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         
-        let task = URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
-            if let error = error {
-                completion(.failure(error))
-                return
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+                
+                guard let httpResponse = response as? HTTPURLResponse else {
+                return (false, nil)
             }
             
-            guard let data = data,
+            if httpResponse.statusCode == 404 {
+                return (false, nil)
+            }
+            
+            guard httpResponse.statusCode == 200,
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let files = json["files"] as? [[String: Any]] else {
-                completion(.failure(NSError(domain: "com.receiptvault", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid response"])))
-                return
+                  let id = json["id"] as? String,
+                  let mimeType = json["mimeType"] as? String,
+                  mimeType == "application/vnd.google-apps.folder" else {
+                return (false, nil)
             }
             
-            if let existingFolder = files.first,
-               let folderId = existingFolder["id"] as? String {
-                completion(.success(folderId))
-                return
-            }
-            
-            // Folder doesn't exist, create it
-            self?.createFolder(name: monthName, parentId: parentId, accessToken: accessToken, completion: completion)
+            return (true, id)
+        } catch {
+            return (false, nil)
         }
-        task.resume()
     }
     
-    private func createFolder(name: String, parentId: String?, accessToken: String, completion: @escaping (Result<String, Error>) -> Void) {
-        let urlString = "\(driveAPI)/files"
-        var request = URLRequest(url: URL(string: urlString)!)
-        request.httpMethod = "POST"
-        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    private func createFolder(name: String, parentId: String?, accessToken: String) async throws -> String {
+        let createURL = URL(string: "\(driveAPI)/files")!
+        var createRequest = URLRequest(url: createURL)
+        createRequest.httpMethod = "POST"
+        createRequest.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        createRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
         
         var metadata: [String: Any] = [
             "name": name,
@@ -631,30 +365,93 @@ class GoogleDriveService {
             metadata["parents"] = [parentId]
         }
         
-        do {
-            let jsonData = try JSONSerialization.data(withJSONObject: metadata)
-            request.httpBody = jsonData
-            
-            let task = URLSession.shared.dataTask(with: request) { data, response, error in
-                if let error = error {
-                    completion(.failure(error))
-                    return
-                }
-                
-                guard let data = data,
-                      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                      let folderId = json["id"] as? String else {
-                    completion(.failure(NSError(domain: "com.receiptvault", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to create folder"])))
-                    return
-                }
-                
-                completion(.success(folderId))
-            }
-            task.resume()
-        } catch {
-            completion(.failure(NSError(domain: "com.receiptvault", code: -1, 
-                userInfo: [NSLocalizedDescriptionKey: "Failed to create folder metadata"])))
+        createRequest.httpBody = try JSONSerialization.data(withJSONObject: metadata)
+        
+        let (createData, createResponse) = try await URLSession.shared.data(for: createRequest)
+        
+        guard let createHttpResponse = createResponse as? HTTPURLResponse else {
+            throw NSError(domain: "com.receiptvault", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid response type"])
         }
+        
+        guard createHttpResponse.statusCode == 200 else {
+            throw NSError(domain: "com.receiptvault", code: createHttpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: "Failed to create folder"])
+        }
+        
+        let createJson = try JSONSerialization.jsonObject(with: createData) as? [String: Any]
+        guard let folderId = createJson?["id"] as? String else {
+            throw NSError(domain: "com.receiptvault", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid response format"])
+        }
+        
+        return folderId
+    }
+    
+    private func createMonthFolderIfNeeded(accessToken: String, monthName: String, parentId: String) async throws -> String {
+        // Check if month folder exists
+        let query = "mimeType='application/vnd.google-apps.folder' and name='\(monthName)' and '\(parentId)' in parents and trashed=false"
+        let urlString = "\(driveAPI)/files?q=\(query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")"
+        
+        var request = URLRequest(url: URL(string: urlString)!)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw NSError(domain: "com.receiptvault", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid response type"])
+        }
+        
+        guard httpResponse.statusCode == 200 else {
+            throw NSError(domain: "com.receiptvault", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: "HTTP error"])
+        }
+        
+        let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        if let files = json?["files"] as? [[String: Any]], let firstFile = files.first, let id = firstFile["id"] as? String {
+            return id
+        }
+        
+        // Create folder if it doesn't exist
+        let createURL = URL(string: "\(driveAPI)/files")!
+        var createRequest = URLRequest(url: createURL)
+        createRequest.httpMethod = "POST"
+        createRequest.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        createRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        let metadata: [String: Any] = [
+            "name": monthName,
+            "mimeType": "application/vnd.google-apps.folder",
+            "parents": [parentId]
+        ]
+        
+        createRequest.httpBody = try JSONSerialization.data(withJSONObject: metadata)
+        
+        let (createData, createResponse) = try await URLSession.shared.data(for: createRequest)
+        
+        guard let createHttpResponse = createResponse as? HTTPURLResponse else {
+            throw NSError(domain: "com.receiptvault", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid response type"])
+        }
+        
+        guard createHttpResponse.statusCode == 200 else {
+            throw NSError(domain: "com.receiptvault", code: createHttpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: "Failed to create folder"])
+        }
+        
+        let createJson = try JSONSerialization.jsonObject(with: createData) as? [String: Any]
+        guard let folderId = createJson?["id"] as? String else {
+            throw NSError(domain: "com.receiptvault", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid response format"])
+        }
+        
+        return folderId
+    }
+    
+    private func ensureMonthFolder(accessToken: String, month: String, year: String) async throws -> String {
+        // First get root folder ID
+        let rootFolderId = try await createRootFolderIfNeeded()
+        
+        // Then check/create month folder
+        return try await createMonthFolderIfNeeded(
+            accessToken: accessToken,
+            monthName: "\(month) \(year)",
+            parentId: rootFolderId
+        )
     }
     
     private func getCurrentMonthName() -> String {
@@ -664,123 +461,156 @@ class GoogleDriveService {
         return dateFormatter.string(from: Date())
     }
     
-    private func formatDate() -> String {
+    private func extractDateInfo(from extractedData: [String: String]) -> (month: String, year: String, monthNum: Int, yearNum: Int) {
+        if let dateStr = extractedData["תאריך"] {
+            print("Found date string: \(dateStr)")
+            if let date = parseReceiptDate(dateStr) {
         let dateFormatter = DateFormatter()
         dateFormatter.locale = Locale(identifier: "he")
-        dateFormatter.dateFormat = "dd-MM-yyyy"
-        return dateFormatter.string(from: Date())
-    }
-    
-    // MARK: - File Operations
-    func searchFile(name: String, in folderId: String) async throws -> GTLRDrive_File? {
-        let searchQuery = "name='\(name)' and '\(folderId)' in parents and trashed=false"
-        let driveService = GTLRDriveService()
-        driveService.authorizer = GIDSignIn.sharedInstance.currentUser?.fetcherAuthorizer
-        
-        let query = GTLRDriveQuery_FilesList.query()
-        query.q = searchQuery
-        query.fields = "files(id, name)"
-        
-        let result: GTLRDrive_File? = try await withCheckedThrowingContinuation { continuation in
-            driveService.executeQuery(query) { (ticket, result, error) in
-                if let error = error {
-                    continuation.resume(throwing: error)
-                    return
-                }
+                dateFormatter.dateFormat = "MMMM"
+                let month = dateFormatter.string(from: date)
+                dateFormatter.dateFormat = "yyyy"
+                let year = dateFormatter.string(from: date)
                 
-                if let fileList = result as? GTLRDrive_FileList,
-                   let files = fileList.files,
-                   let file = files.first {
-                    continuation.resume(returning: file)
-                } else {
-                    continuation.resume(returning: nil)
-                }
+                let calendar = Calendar.current
+                let monthNum = calendar.component(.month, from: date)
+                let yearNum = calendar.component(.year, from: date)
+                print("✓ Successfully parsed date - Month: \(month), Year: \(year)")
+                return (month, year, monthNum, yearNum)
             }
         }
         
-        return result
+        // Fallback to current date
+        print("⚠️ Using current date")
+        let currentDate = Date()
+        let dateFormatter = DateFormatter()
+        dateFormatter.locale = Locale(identifier: "he")
+        dateFormatter.dateFormat = "MMMM"
+        let month = dateFormatter.string(from: currentDate)
+        dateFormatter.dateFormat = "yyyy"
+        let year = dateFormatter.string(from: currentDate)
+        
+        let calendar = Calendar.current
+        let monthNum = calendar.component(.month, from: currentDate)
+        let yearNum = calendar.component(.year, from: currentDate)
+        
+        return (month, year, monthNum, yearNum)
     }
     
-    func moveFile(fileId: String, to folderId: String) async throws {
-        let driveService = GTLRDriveService()
-        driveService.authorizer = GIDSignIn.sharedInstance.currentUser?.fetcherAuthorizer
-        
-        // Create an empty file object since we're only moving it
-        let file = GTLRDrive_File()
-        
-        let query = GTLRDriveQuery_FilesUpdate.query(withObject: file, fileId: fileId, uploadParameters: nil)
-        query.addParents = folderId
-        query.removeParents = "root"  // Remove from root if it's there
-        query.fields = "id, parents"
-        
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            driveService.executeQuery(query) { (ticket, result, error) in
-                if let error = error {
-                    continuation.resume(throwing: error)
-                } else {
-                    continuation.resume(returning: ())
-                }
-            }
-        }
-    }
-    
-    func getRootFolderId(completion: @escaping (Result<String, Error>) -> Void) {
+    func getRootFolderId() async throws -> String {
         guard let accessToken = GIDSignIn.sharedInstance.currentUser?.accessToken.tokenString else {
-            completion(.failure(NSError(domain: "com.receiptvault", code: -1, userInfo: [NSLocalizedDescriptionKey: "Not authenticated"])))
-            return
+            throw NSError(domain: "com.receiptvault", code: -1, userInfo: [NSLocalizedDescriptionKey: "Not authenticated"])
         }
         
         let query = "name='\(rootFolderName)' and mimeType='application/vnd.google-apps.folder' and trashed=false"
         let urlString = "\(driveAPI)/files?q=\(query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? query)&fields=files(id)"
         
         guard let url = URL(string: urlString) else {
-            completion(.failure(NSError(domain: "com.receiptvault", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid URL"])))
-            return
+            throw NSError(domain: "com.receiptvault", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid URL"])
         }
         
         var request = URLRequest(url: url)
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         
-        URLSession.shared.dataTask(with: request) { data, response, error in
-            if let error = error {
-                completion(.failure(error))
-                return
-            }
-            
-            guard let data = data else {
-                completion(.failure(NSError(domain: "com.receiptvault", code: -1, userInfo: [NSLocalizedDescriptionKey: "No data received"])))
-                return
-            }
-            
-            do {
-                let json = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any]
-                if let files = json?["files"] as? [[String: Any]], let firstFile = files.first, let id = firstFile["id"] as? String {
-                    completion(.success(id))
-                } else {
-                    completion(.failure(NSError(domain: "com.receiptvault", code: -1, userInfo: [NSLocalizedDescriptionKey: "Folder not found"])))
-                }
-            } catch {
-                completion(.failure(error))
-            }
-        }.resume()
+        let (data, response) = try await URLSession.shared.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+            throw NSError(domain: "com.receiptvault", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to get folder ID"])
+        }
+        
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let files = json["files"] as? [[String: Any]],
+              let firstFile = files.first,
+              let id = firstFile["id"] as? String else {
+            throw NSError(domain: "com.receiptvault", code: -1, userInfo: [NSLocalizedDescriptionKey: "Folder not found"])
+        }
+        
+        return id
     }
     
-    private func ensureMonthFolder(accessToken: String, month: String, year: String) async throws -> String {
-        // Get root folder ID first
-        let rootFolderId = try await withCheckedThrowingContinuation { continuation in
-            createRootFolderIfNeeded(accessToken: accessToken) { result in
-                continuation.resume(with: result)
-            }
+    // MARK: - File Operations
+    func searchFile(name: String, mimeType: String? = nil, parentId: String? = nil) async throws -> (exists: Bool, id: String?) {
+        guard let accessToken = GIDSignIn.sharedInstance.currentUser?.accessToken.tokenString else {
+            throw GoogleDriveError.notAuthenticated
         }
         
-        // Create month folder if needed
-        let monthFolderName = "\(month) \(year)"
-        let monthFolderId = try await withCheckedThrowingContinuation { continuation in
-            createMonthFolderIfNeeded(accessToken: accessToken, monthName: monthFolderName, parentId: rootFolderId) { result in
-                continuation.resume(with: result)
-            }
+        var queryParts = ["name='\(name)'", "trashed=false"]
+        if let mimeType = mimeType {
+            queryParts.append("mimeType='\(mimeType)'")
+        }
+        if let parentId = parentId {
+            queryParts.append("'\(parentId)' in parents")
         }
         
-        return monthFolderId
+        let query = queryParts.joined(separator: " and ")
+        let urlString = "\(driveAPI)/files?q=\(query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? query)"
+        
+        guard let url = URL(string: urlString) else {
+            throw GoogleDriveError.invalidURL
+        }
+        
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+            throw GoogleDriveError.requestFailed
+        }
+        
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let files = json["files"] as? [[String: Any]] else {
+            throw GoogleDriveError.invalidResponse
+        }
+        
+        if let firstFile = files.first, let id = firstFile["id"] as? String {
+            return (true, id)
+        }
+        
+        return (false, nil)
+    }
+    
+    func moveFile(fileId: String, toFolder folderId: String) async throws {
+        guard let accessToken = GIDSignIn.sharedInstance.currentUser?.accessToken.tokenString else {
+            throw GoogleDriveError.notAuthenticated
+        }
+        
+        // Get current parents
+        let getUrl = URL(string: "\(driveAPI)/files/\(fileId)?fields=parents")!
+        var getRequest = URLRequest(url: getUrl)
+        getRequest.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        
+        let (data, response) = try await URLSession.shared.data(for: getRequest)
+        
+        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200,
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let previousParents = json["parents"] as? [String] else {
+            throw GoogleDriveError.requestFailed
+        }
+        
+        // Update file with new parent
+        let updateUrl = URL(string: "\(driveAPI)/files/\(fileId)?addParents=\(folderId)&removeParents=\(previousParents.joined(separator: ","))")!
+        var updateRequest = URLRequest(url: updateUrl)
+        updateRequest.httpMethod = "PATCH"
+        updateRequest.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        
+        let (_, updateResponse) = try await URLSession.shared.data(for: updateRequest)
+        
+        guard let updateHttpResponse = updateResponse as? HTTPURLResponse,
+              updateHttpResponse.statusCode == 200 else {
+            throw GoogleDriveError.requestFailed
+        }
+    }
+    
+    // MARK: - Error Handling
+    enum GoogleDriveError: Error {
+        case notAuthenticated
+        case invalidURL
+        case requestFailed
+        case invalidResponse
+        case folderNotFound
+        case uploadFailed
+        case sheetCreationFailed(Error)
+        case sheetUpdateFailed(Error)
     }
 } 

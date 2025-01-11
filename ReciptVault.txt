@@ -1,0 +1,150 @@
+﻿ReceiptVault User Flow Documentation
+Goal The goal of ReceiptVault is to help individuals and freelancers organize their monthly receipts efficiently. By integrating local storage and Google Drive, the app provides a reliable and seamless solution for receipt management. Unlike similar tools, ReceiptVault is designed specifically for Hebrew speakers, ensuring a tailored user experience. Its intuitive interface, combined with AI-powered data extraction and robust storage options, simplifies receipt organization, saves time, and minimizes the risk of lost documents, making it an essential tool for users who value efficiency and precision. The goal of ReceiptVault is to help individuals and freelancers organize their monthly receipts efficiently. The app ensures receipts are securely saved in both local storage and Google Drive.
+Important Note The app is designed for Hebrew speakers, and all in-app content will be in Hebrew. This documentation is in English for reference purposes.
+________________
+
+
+App Overview
+ReceiptVault consists of three main tabs:
+1. Settings
+2. Add a Receipt (default tab when the app opens)
+3. Receipts
+________________
+
+
+Settings Tab
+Features:
+* Connect to Google button: Displays connection status using color and status indicators.
+   * Connected: Displays an indicator confirming the connection.
+   * Not Connected: Prompts the user to connect to their Google account.
+Google Authentication Flow:
+* Clicking the Connect button initiates Google authentication, requesting permissions to:
+   * Read and write files to Google Drive.
+   * Read and write files to Google Sheets.
+   * Any additional required permissions.
+Optimization:
+* Remove the existing status indicator, as the button will now serve as the status indicator.
+________________
+
+
+Add a Receipt Tab
+This is the primary interaction tab with two CTAs:
+1. Scan a New Receipt (main CTA).
+2. Upload a Receipt from Device (secondary CTA).
+3. indicator for the connection to google drive
+The tab also displays a Google Drive connection indicator.
+Scan Feature Workflow:
+1. Opens the camera for scanning.
+2. Supports scanning multiple documents.
+3. After clicking Save:
+   * Converts the scan into a PDF.
+   * Uses Gemini AI to analyze and extract data, including:
+      * Business name.
+      * Date.
+      * Address.
+      * Phone number.
+      * Company number (ח.פ).
+      * Items purchased.
+      * Total amount.
+      * VAT amount.
+      * Payment method.
+      * Last four digits of the credit card (if applicable).
+Post-Analysis Actions:
+1. Local Storage:
+
+   * Saves the PDF in a folder based on the scanned date.
+   * Creates a month-specific folder if not already existing.
+   * File naming convention: business-name_date.pdf.
+   2. Google Drive:
+
+      * Saves the PDF in the appropriate month folder.
+      * Updates the Google Sheet summary file:
+      * Adds a new row if the file exists.
+      * Creates a new file if it doesn’t exist.
+      * Columns include:
+      1. Business name
+      2. Date
+      3. Address
+      4. Phone number
+      5. Company number (ח.פ)
+      6. Items purchased
+      7. Total amount
+      8. VAT amount
+      9. Payment method
+      10. Last four digits of the credit card (if applicable)
+      * Leaves cells blank for missing data.
+Example User Flow:
+      1. User scans a receipt from January 2025.
+      2. Receipt is converted to PDF.
+      3. Gemini AI analyzes the receipt.
+      4. PDF is saved:
+      * Locally in the "January 2025" folder.
+      * In Google Drive’s "January 2025" folder.
+      5. Summary data is added as a new row in the Google Sheet.
+Offline Handling:
+      * If there is no internet connection:
+      * Saves the receipt locally only.
+      * Follows the same folder logic.
+      * Uses a timestamp-based file name.
+      * When an internet connection is restored:
+      * Automatically syncs receipts to Google Drive.
+      * Follows the same folder and naming conventions for synchronization.
+      * If there is no internet connection:
+      * Saves the receipt locally only.
+      * Follows the same folder logic.
+      * Uses a timestamp-based file name.
+________________
+
+
+Receipts Tab
+Features:
+      * Main CTA: Opens the Google Drive ReceiptVault folder.
+      * Secondary CTA: Opens the local ReceiptVault folder, where users can:
+      * Browse monthly folders.
+      * View receipts.
+      * Use device-specific options (e.g., share, delete, grid view, list view).
+________________
+
+
+Additional Notes
+      1. Google authentication is required only once unless the user actively disconnects.
+      2. Ensure Gemini AI’s functionalities are fully utilized.
+      3. Maintain seamless folder organization and naming consistency for both local storage and Google Drive.
+________________
+
+
+iOS App Design Guidelines
+To ensure ReceiptVault adheres to Apple’s Human Interface Guidelines (HIG) and best practices for iOS development, the following principles and strategies will guide the design and implementation process:
+1. UI and UX Principles
+      * Prioritize simplicity and clarity in layout and interactions.
+      * Ensure consistent spacing, alignment, and typography for a polished look.
+      * Use intuitive gestures and transitions to enhance user experience.
+2. App Architecture and Navigation Patterns
+      * Employ a tab-based navigation system for easy access to primary features.
+      * Follow the Model-View-Controller (MVC) design pattern for scalability and maintainability.
+3. Accessibility Features
+      * Support VoiceOver, Dynamic Type, and color blindness modes.
+      * Include proper labels and hints for UI components.
+4. Integration with iOS Native Features
+      * Use native APIs like Camera for scanning receipts and FileProvider for storage integration.
+      * Leverage iCloud for additional storage options.
+5. Adherence to Apple’s Design Language
+      * Use San Francisco as the default typeface.
+      * Follow Apple’s color palette guidelines to ensure aesthetic consistency.
+      * Create custom icons that align with Apple’s iconography style.
+6. Optimization for Various Devices
+      * Ensure responsive design for iPhones and iPads.
+      * Use Auto Layout for seamless adaptation to different screen sizes and orientations.
+7. App Store Review Compliance
+      * Adhere to Apple’s App Store Review Guidelines, including content policies, privacy, and data security requirements.
+8. Security and Data Privacy
+      * Implement data encryption for local storage and cloud uploads.
+      * Comply with GDPR and other relevant data privacy regulations.
+9. Leveraging iOS-Specific Technologies
+      * Utilize Core Animation for smooth transitions.
+      * Use Core Data for efficient local data storage.
+      * Explore Core ML for potential receipt data categorization improvements.
+10. Testing and Optimization
+      * Perform unit, integration, and UI tests using XCTest.
+      * Use Instruments to debug and optimize performance.
+      * Regularly monitor crash reports via TestFlight.

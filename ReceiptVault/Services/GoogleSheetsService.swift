@@ -8,7 +8,30 @@ class GoogleSheetsService {
     private let sheetsService = GTLRSheetsService()
     
     private init() {
-        sheetsService.authorizer = GIDSignIn.sharedInstance.currentUser?.fetcherAuthorizer
+        print("Initializing GoogleSheetsService...")
+        updateAuthorizer()
+    }
+    
+    private func updateAuthorizer() {
+        if let authorizer = GIDSignIn.sharedInstance.currentUser?.fetcherAuthorizer {
+            sheetsService.authorizer = authorizer
+            print("✓ Sheets service authorizer updated")
+        } else {
+            print("⚠️ No authorizer available for sheets service")
+        }
+    }
+    
+    // Ensure service is properly authorized
+    private func ensureAuthorized() throws {
+        if sheetsService.authorizer == nil {
+            print("Attempting to update authorizer...")
+            updateAuthorizer()
+            
+            if sheetsService.authorizer == nil {
+                print("❌ Still no authorizer available")
+                throw GoogleSheetsError.notAuthorized
+            }
+        }
     }
     
     // Hebrew month names
@@ -33,49 +56,46 @@ class GoogleSheetsService {
     
     /// Creates a new monthly summary sheet if it doesn't exist
     func ensureMonthlySheet(in folderId: String, month: Int, year: Int) async throws -> String {
-        let sheetTitle = "סיכום הוצאות - \(hebrewMonths[month - 1]) \(year)"
+        let sheetName = String(format: "Receipts_%02d_%d", month, year)
         
-        // Check if sheet exists
-        let existingFile = try await GoogleDriveService.shared.searchFile(name: sheetTitle, in: folderId)
-        if let fileId = existingFile?.identifier {
-            return fileId
+        // First, check if the sheet already exists in the folder
+        let (exists, existingId) = try await GoogleDriveService.shared.searchFile(
+            name: sheetName,
+            mimeType: "application/vnd.google-apps.spreadsheet",
+            parentId: folderId
+        )
+        
+        if exists, let id = existingId {
+            return id
         }
         
-        // Create new sheet
+        // If not exists, create new sheet
         let spreadsheet = GTLRSheets_Spreadsheet()
         spreadsheet.properties = GTLRSheets_SpreadsheetProperties()
-        spreadsheet.properties?.title = sheetTitle
-        spreadsheet.properties?.locale = "iw"
+        spreadsheet.properties?.title = sheetName
         
         let createRequest = GTLRSheetsQuery_SpreadsheetsCreate.query(withObject: spreadsheet)
-        let response: GTLRSheets_Spreadsheet = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<GTLRSheets_Spreadsheet, Error>) in
+        let (sheetId, _) = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<(String, GTLRSheets_Spreadsheet), Error>) in
             sheetsService.executeQuery(createRequest) { (ticket, result, error) in
                 if let error = error {
                     continuation.resume(throwing: error)
                     return
                 }
                 
-                if let spreadsheet = result as? GTLRSheets_Spreadsheet {
-                    continuation.resume(returning: spreadsheet)
-                } else {
-                    continuation.resume(throwing: NSError(domain: "GoogleSheetsService", code: -1,
-                        userInfo: [NSLocalizedDescriptionKey: "Invalid response type"]))
+                guard let spreadsheet = result as? GTLRSheets_Spreadsheet,
+                      let spreadsheetId = spreadsheet.spreadsheetId else {
+                    continuation.resume(throwing: NSError(domain: "com.receiptvault", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid response"]))
+                    return
                 }
+                
+                continuation.resume(returning: (spreadsheetId, spreadsheet))
             }
         }
         
-        guard let spreadsheetId = response.spreadsheetId else {
-            throw NSError(domain: "GoogleSheetsService", code: -1,
-                userInfo: [NSLocalizedDescriptionKey: "Failed to create spreadsheet"])
-        }
+        // Move the sheet to the correct folder
+        try await GoogleDriveService.shared.moveFile(fileId: sheetId, toFolder: folderId)
         
-        // Move to correct folder
-        try await GoogleDriveService.shared.moveFile(fileId: spreadsheetId, to: folderId)
-        
-        // Setup headers and formatting
-        try await setupSheetHeaders(spreadsheetId: spreadsheetId)
-        
-        return spreadsheetId
+        return sheetId
     }
     
     /// Sets up the sheet headers and initial formatting
@@ -201,30 +221,55 @@ class GoogleSheetsService {
     }
     
     /// Adds a new row of data extracted from a receipt
-    func addReceiptData(to spreadsheetId: String, extractedData: [String: String]) async throws {
-        // Map extracted data to columns
-        let rowData = columnHeaders.map { header in
-            return extractedData[header] ?? ""
-        }
+    func addReceiptData(to sheetId: String, extractedData: [String: String]) async throws {
+        print("\n=== Starting Sheet Update Process ===")
         
-        let valueRange = GTLRSheets_ValueRange()
-        valueRange.values = [rowData]
-        
-        let appendRequest = GTLRSheetsQuery_SpreadsheetsValuesAppend.query(
-            withObject: valueRange,
-            spreadsheetId: spreadsheetId,
-            range: "A:J")
-        appendRequest.valueInputOption = "USER_ENTERED"
-        appendRequest.insertDataOption = "INSERT_ROWS"
-        
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            sheetsService.executeQuery(appendRequest) { (ticket, result, error) in
-                if let error = error {
-                    continuation.resume(throwing: error)
-                } else {
-                    continuation.resume(returning: ())
+        do {
+            try ensureAuthorized()
+            
+            // Map extracted data to columns
+            print("Mapping extracted data to columns...")
+            let rowData = columnHeaders.map { header in
+                let value = extractedData[header] ?? ""
+                print("Column '\(header)': \(value)")
+                return value
+            }
+            
+            let valueRange = GTLRSheets_ValueRange()
+            valueRange.values = [rowData]
+            
+            print("Preparing append request...")
+            let appendRequest = GTLRSheetsQuery_SpreadsheetsValuesAppend.query(
+                withObject: valueRange,
+                spreadsheetId: sheetId,
+                range: "A:J")
+            appendRequest.valueInputOption = "USER_ENTERED"
+            appendRequest.insertDataOption = "INSERT_ROWS"
+            
+            print("Executing append request...")
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                sheetsService.executeQuery(appendRequest) { (ticket, result, error) in
+                    if let error = error {
+                        print("❌ Sheet update failed: \(error)")
+                        continuation.resume(throwing: GoogleSheetsError.appendFailed(error))
+                    } else {
+                        print("✓ Sheet update successful")
+                        continuation.resume(returning: ())
+                    }
                 }
             }
+            
+            print("=== Sheet Update Process Complete ===")
+        } catch {
+            print("❌ Sheet update process failed: \(error)")
+            throw error
         }
+    }
+    
+    enum GoogleSheetsError: Error {
+        case notAuthorized
+        case appendFailed(Error)
+        case invalidResponse
+        case sheetCreationFailed
     }
 } 

@@ -65,6 +65,25 @@ class LocalFileManager {
         }
     }
     
+    func getMonthDirectory(for monthName: String) -> URL? {
+        print("\n=== Getting Month Directory ===")
+        guard let rootURL = rootFolderURL else {
+            print("❌ Error: Could not get root folder URL")
+            return nil
+        }
+        
+        let monthURL = rootURL.appendingPathComponent(monthName, isDirectory: true)
+        print("Month directory URL: \(monthURL.path)")
+        
+        if fileManager.fileExists(atPath: monthURL.path) {
+            print("✓ Month directory exists")
+            return monthURL
+        } else {
+            print("❌ Month directory does not exist")
+            return nil
+        }
+    }
+    
     func createMonthFolderIfNeeded(monthName: String) -> URL? {
         print("Attempting to create/get month folder: \(monthName)")
         guard let rootURL = rootFolderURL else {

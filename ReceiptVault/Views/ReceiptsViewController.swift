@@ -89,11 +89,23 @@ class ReceiptsViewController: UIViewController {
         return button
     }()
     
+    private lazy var tableView: UITableView = {
+        let table = UITableView()
+        table.backgroundColor = .clear
+        table.separatorStyle = .none
+        table.delegate = self
+        table.dataSource = self
+        table.register(MonthCell.self, forCellReuseIdentifier: "MonthCell")
+        table.translatesAutoresizingMaskIntoConstraints = false
+        return table
+    }()
+    
     // MARK: - Lifecycle
     override func viewDidLoad() {
         super.viewDidLoad()
         print("\n=== ReceiptsViewController: viewDidLoad ===")
         setupUI()
+        setupTableView()
         loadMonths()
         setupNotifications()
     }
@@ -153,19 +165,18 @@ class ReceiptsViewController: UIViewController {
         ])
     }
     
+    private func setupTableView() {
+        view.addSubview(tableView)
+        NSLayoutConstraint.activate([
+            tableView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            tableView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+        ])
+    }
+    
     private func loadMonths() {
-        print("\n=== Loading Months ===")
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            print("Fetching months on background thread")
-            let months = self?.fileManager.getAllMonths() ?? []
-            print("Found months: \(months)")
-            
-            DispatchQueue.main.async {
-                print("Updating UI with months")
-                self?.months = months
-                self?.needsReload = false
-            }
-        }
+        loadReceipts()
     }
     
     // MARK: - Actions
@@ -177,17 +188,21 @@ class ReceiptsViewController: UIViewController {
         if GIDSignIn.sharedInstance.currentUser == nil { return }
         
         // Get the root folder ID and open its URL
-        GoogleDriveService.shared.getRootFolderId { result in
-            switch result {
-            case .success(let folderId):
+        Task {
+            do {
+                let folderId = try await GoogleDriveService.shared.getRootFolderId()
                 if let url = URL(string: "https://drive.google.com/drive/folders/\(folderId)") {
-                    UIApplication.shared.open(url)
+                    await MainActor.run {
+                        UIApplication.shared.open(url)
+                    }
                 }
-            case .failure(let error):
+            } catch {
                 print("Failed to get root folder ID: \(error)")
                 // Fallback to opening the main Drive URL
                 if let url = URL(string: "https://drive.google.com") {
-                    UIApplication.shared.open(url)
+                    await MainActor.run {
+                        UIApplication.shared.open(url)
+                    }
                 }
             }
         }
@@ -225,6 +240,17 @@ class ReceiptsViewController: UIViewController {
     
     // Add property to track reload state
     private var needsReload: Bool = true
+    
+    private func loadReceipts() {
+        Task { @MainActor in
+            print("\n=== Loading Months ===")
+            let months = fileManager.getAllMonths()
+            print("Found months: \(months)")
+            self.months = months
+            self.tableView.reloadData()
+            self.needsReload = false
+        }
+    }
 }
 
 // MARK: - UITableViewDelegate & DataSource

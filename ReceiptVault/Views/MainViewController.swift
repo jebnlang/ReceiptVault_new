@@ -67,21 +67,23 @@ class MainViewController: UIViewController {
     
     private lazy var connectionStatusView: UIView = {
         let view = UIView()
-        view.backgroundColor = .systemBackground
+        view.backgroundColor = .clear
         view.layer.cornerRadius = AppTheme.cornerRadius
-        AppTheme.styleCard(view)
         return view
     }()
     
     private lazy var statusIndicator: UIView = {
         let view = UIView()
-        view.layer.cornerRadius = 4
+        view.layer.cornerRadius = 3
+        view.translatesAutoresizingMaskIntoConstraints = false
         return view
     }()
     
     private lazy var statusLabel: UILabel = {
         let label = UILabel()
-        label.font = .systemFont(ofSize: 14, weight: .medium)
+        label.font = .systemFont(ofSize: 12)
+        label.textAlignment = .center
+        label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
     
@@ -132,13 +134,13 @@ class MainViewController: UIViewController {
             view.addSubview(logoImageView)
             view.addSubview(scanButton)
             view.addSubview(uploadButton)
-            view.addSubview(connectionStatusView)
             view.addSubview(scanInstructionLabel)
+            view.addSubview(connectionStatusView)
             
             connectionStatusView.addSubview(statusIndicator)
             connectionStatusView.addSubview(statusLabel)
             
-            [scanButton, uploadButton, connectionStatusView, statusIndicator, statusLabel].forEach {
+            [scanButton, uploadButton, connectionStatusView].forEach {
                 $0.translatesAutoresizingMaskIntoConstraints = false
             }
             
@@ -167,22 +169,21 @@ class MainViewController: UIViewController {
                 scanInstructionLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: AppTheme.padding),
                 scanInstructionLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -AppTheme.padding),
                 
-                // Connection status view constraints
-                connectionStatusView.topAnchor.constraint(equalTo: scanInstructionLabel.bottomAnchor, constant: AppTheme.padding * 2),
+                // Connection status view - now more subtle and below buttons
+                connectionStatusView.topAnchor.constraint(equalTo: scanInstructionLabel.bottomAnchor, constant: AppTheme.padding),
                 connectionStatusView.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-                connectionStatusView.heightAnchor.constraint(equalToConstant: 44),
-                connectionStatusView.widthAnchor.constraint(equalToConstant: 200),
+                connectionStatusView.heightAnchor.constraint(equalToConstant: 24),
                 
-                // Status indicator constraints
-                statusIndicator.leadingAnchor.constraint(equalTo: connectionStatusView.leadingAnchor, constant: AppTheme.padding),
+                // Status indicator constraints - smaller and centered
                 statusIndicator.centerYAnchor.constraint(equalTo: connectionStatusView.centerYAnchor),
-                statusIndicator.widthAnchor.constraint(equalToConstant: 8),
-                statusIndicator.heightAnchor.constraint(equalToConstant: 8),
+                statusIndicator.leadingAnchor.constraint(equalTo: connectionStatusView.leadingAnchor),
+                statusIndicator.widthAnchor.constraint(equalToConstant: 6),
+                statusIndicator.heightAnchor.constraint(equalToConstant: 6),
                 
-                // Status label constraints
-                statusLabel.leadingAnchor.constraint(equalTo: statusIndicator.trailingAnchor, constant: AppTheme.smallPadding),
-                statusLabel.trailingAnchor.constraint(equalTo: connectionStatusView.trailingAnchor, constant: -AppTheme.padding),
-                statusLabel.centerYAnchor.constraint(equalTo: connectionStatusView.centerYAnchor)
+                // Status label constraints - closer to indicator
+                statusLabel.leadingAnchor.constraint(equalTo: statusIndicator.trailingAnchor, constant: 4),
+                statusLabel.centerYAnchor.constraint(equalTo: connectionStatusView.centerYAnchor),
+                statusLabel.trailingAnchor.constraint(equalTo: connectionStatusView.trailingAnchor)
             ])
             
             updateConnectionStatus()
@@ -223,16 +224,36 @@ class MainViewController: UIViewController {
     }
     
     private func updateConnectionStatus() {
-        if isAuthenticated {
-            statusIndicator.backgroundColor = .systemGreen
-            statusLabel.text = "מחובר ל-Google"
-            statusLabel.textColor = .systemGreen
-            connectionStatusView.layer.borderColor = UIColor.systemGreen.cgColor
-        } else {
-            statusIndicator.backgroundColor = .systemGray
-            statusLabel.text = "לא מחובר"
-            statusLabel.textColor = .systemGray
-            connectionStatusView.layer.borderColor = UIColor.systemGray.cgColor
+        Task { @MainActor in
+            let currentUser = GIDSignIn.sharedInstance.currentUser
+            let isTokenValid = currentUser?.accessToken.tokenString.isEmpty == false &&
+                             (currentUser?.accessToken.expirationDate ?? Date()) > Date()
+            
+            if isTokenValid {
+                self.statusIndicator.backgroundColor = .systemGreen.withAlphaComponent(0.8)
+                self.statusLabel.text = "מחובר ל-Google"
+                self.statusLabel.textColor = .secondaryLabel
+            } else {
+                // Try to restore the session
+                do {
+                    _ = try await GIDSignIn.sharedInstance.restorePreviousSignIn()
+                    // Check again after restore attempt
+                    if GIDSignIn.sharedInstance.currentUser != nil {
+                        self.statusIndicator.backgroundColor = .systemGreen.withAlphaComponent(0.8)
+                        self.statusLabel.text = "מחובר ל-Google"
+                        self.statusLabel.textColor = .secondaryLabel
+                    } else {
+                        self.statusIndicator.backgroundColor = .systemGray.withAlphaComponent(0.8)
+                        self.statusLabel.text = "לא מחובר"
+                        self.statusLabel.textColor = .secondaryLabel
+                    }
+                } catch {
+                    print("Error restoring session: \(error)")
+                    self.statusIndicator.backgroundColor = .systemGray.withAlphaComponent(0.8)
+                    self.statusLabel.text = "לא מחובר"
+                    self.statusLabel.textColor = .secondaryLabel
+                }
+            }
         }
     }
     
@@ -263,169 +284,258 @@ class MainViewController: UIViewController {
     
     // MARK: - Helper Methods
     private func showAlert(title: String, message: String) {
-        DispatchQueue.main.async {
-            let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
-            alert.addAction(UIAlertAction(title: "אישור", style: .default))
-            self.present(alert, animated: true)
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            
+            // If there's already a presented view controller, dismiss it first
+            if let presentedVC = self.presentedViewController {
+                presentedVC.dismiss(animated: true) { [weak self] in
+                    guard let self = self else { return }
+                    self.presentNewAlert(title: title, message: message)
+                }
+            } else {
+                self.presentNewAlert(title: title, message: message)
+            }
         }
     }
     
+    private func presentNewAlert(title: String, message: String) {
+        let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "אישור", style: .default))
+        self.present(alert, animated: true)
+    }
+    
     private func processUploadedFile(at url: URL) {
+        print("\n=== Processing Uploaded File ===")
+        print("File URL: \(url)")
+        print("File name: \(url.lastPathComponent)")
+        print("File type: \(url.pathExtension)")
+        
         // Create a copy of the file in a temporary location
         let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(url.lastPathComponent)
+        print("Temporary location: \(tempURL)")
         
         do {
             if FileManager.default.fileExists(atPath: tempURL.path) {
+                print("Removing existing temp file")
                 try FileManager.default.removeItem(at: tempURL)
             }
+            
+            print("Copying file to temp location")
             try FileManager.default.copyItem(at: url, to: tempURL)
+            print("✓ File copied successfully")
+            
+            // Get file attributes
+            let attributes = try FileManager.default.attributesOfItem(atPath: tempURL.path)
+            print("\nFile Details:")
+            print("Size: \(attributes[.size] ?? "Unknown") bytes")
+            print("Created: \(attributes[.creationDate] ?? "Unknown")")
+            print("Modified: \(attributes[.modificationDate] ?? "Unknown")")
+            print("Type: \(attributes[.type] ?? "Unknown")")
             
             // Handle based on file type
             if url.pathExtension.lowercased() == "pdf" {
+                print("\nProcessing as PDF")
                 handlePDFUpload(at: tempURL)
             } else {
+                print("\nProcessing as Image")
                 handleImageUpload(at: tempURL)
             }
         } catch {
+            print("❌ Error processing file:")
+            print("Error description: \(error.localizedDescription)")
+            if let nsError = error as NSError? {
+                print("Domain: \(nsError.domain)")
+                print("Code: \(nsError.code)")
+                print("User Info: \(nsError.userInfo)")
+            }
             showAlert(title: "שגיאה", message: "שגיאה בהעלאת הקובץ: \(error.localizedDescription)")
         }
     }
     
     private func handleImageUpload(at url: URL) {
         print("\n=== Handling Image Upload ===")
+        print("Loading image from: \(url.path)")
+        
         guard let image = UIImage(contentsOfFile: url.path) else {
-            print("❌ Failed to load image from: \(url.path)")
+            print("❌ Failed to load image")
+            print("File exists: \(FileManager.default.fileExists(atPath: url.path))")
+            print("File readable: \(FileManager.default.isReadableFile(atPath: url.path))")
             self.showAlert(title: "שגיאה", message: "לא ניתן לטעון את התמונה")
             return
         }
-        print("✓ Successfully loaded image")
+        
+        print("✓ Image loaded successfully")
+        print("Image size: \(image.size)")
+        print("Scale: \(image.scale)")
+        print("Orientation: \(image.imageOrientation.rawValue)")
         
         Task {
             do {
-                print("Starting AI extraction...")
-                let extractedData = try await GeminiService.shared.extractReceiptData(from: image)
-                print("✓ AI extraction complete: \(extractedData)")
+                print("\nStarting AI extraction...")
+                let extractedData = try await AzureDocumentService.shared.extractReceiptData(from: image)
+                print("✓ AI extraction complete")
+                print("Extracted data: \(extractedData)")
                 
                 let monthName: String
-                if let dateStr = extractedData["תאריך"],
-                   let date = self.parseReceiptDate(dateStr) {
-                    monthName = self.formatMonthYear(from: date)
-                    print("Using extracted date for month: \(monthName)")
+                if let dateStr = extractedData["תאריך"] {
+                    print("\nAttempting to parse date: \(dateStr)")
+                    if let date = self.parseReceiptDate(dateStr) {
+                        monthName = self.formatMonthYear(from: date)
+                        print("✓ Using extracted date for month: \(monthName)")
+                    } else {
+                        monthName = self.getCurrentMonthName()
+                        print("⚠️ Could not parse date, using current month: \(monthName)")
+                    }
                 } else {
                     monthName = self.getCurrentMonthName()
-                    print("Using current month: \(monthName)")
+                    print("⚠️ No date found, using current month: \(monthName)")
                 }
                 
+                print("\nCreating PDF from image...")
                 if let pdfData = self.createPDFFromImage(image) {
                     let fileName = "Receipt_\(self.formatDate()).pdf"
-                    print("Created PDF file: \(fileName)")
+                    print("✓ PDF created: \(fileName)")
                     
-                    // Save locally
-                    print("Attempting to save locally...")
+                    print("\nSaving to local storage...")
                     if LocalFileManager.shared.saveReceipt(pdfData: pdfData, fileName: fileName, monthName: monthName) {
-                        print("✓ Local save successful")
+                        print("✓ Saved to local storage")
                         
                         if self.isAuthenticated {
-                            print("Uploading to Google Drive...")
+                            print("\nUploading to Google Drive...")
                             try await self.googleDriveService.uploadReceiptWithData(image: image, extractedData: extractedData)
-                            print("✓ Google Drive upload successful")
-                            DispatchQueue.main.async {
-                                self.showAlert(title: "הצלחה", message: "הקבלה נשמרה בהצלחה והועלתה ל-Google Drive")
-                            }
+                            print("✓ Uploaded to Google Drive")
+                            self.showAlert(title: "הצלחה", message: "הקבלה נשמרה בהצלחה והועלתה ל-Google Drive")
                         } else {
-                            print("Not authenticated, skipping Google Drive upload")
+                            print("⚠️ Not authenticated, skipping Google Drive upload")
                             self.showAlert(title: "הצלחה", message: "הקבלה נשמרה בהצלחה במכשיר")
                         }
                     } else {
-                        print("❌ Local save failed")
+                        print("❌ Failed to save locally")
                         self.showAlert(title: "שגיאה", message: "שגיאה בשמירת הקבלה")
                     }
                 } else {
-                    print("❌ Failed to create PDF from image")
+                    print("❌ Failed to create PDF")
+                    self.showAlert(title: "שגיאה", message: "שגיאה ביצירת קובץ PDF")
                 }
             } catch {
-                print("❌ Error in upload process: \(error)")
-                self.showAlert(title: "שגיאה", message: "שגיאה בעיבוד הקבלה: \(error.localizedDescription)")
+                print("\n❌ Error in upload process:")
+                print("Error type: \(type(of: error))")
+                print("Error description: \(error.localizedDescription)")
+                if let azureError = error as? AzureError {
+                    print("Azure error type: \(azureError)")
+                }
+                self.handleAzureError(error)
             }
         }
     }
     
     private func handlePDFUpload(at url: URL) {
-        do {
-            let data = try Data(contentsOf: url)
-            if let image = convertPDFToImage(data: data) {
+        // Create a processing queue to handle long-running operations
+        let processingQueue = DispatchQueue(label: "com.receiptvault.pdfprocessing")
+        
+        processingQueue.async { [weak self] in
+            guard let self = self else { return }
+            
+            do {
+                let data = try Data(contentsOf: url)
+                guard let image = self.convertPDFToImage(data: data) else {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                        self?.showAlert(title: "שגיאה", message: "לא ניתן להמיר את הקובץ")
+                    }
+                    return
+                }
+                
                 print("Successfully converted PDF to image")
                 print("Image size: \(image.size)")
                 print("Image scale: \(image.scale)")
-                print("Image orientation: \(image.imageOrientation.rawValue)")
                 
+                // Handle the Azure Document Intelligence request with retry logic
                 Task {
                     do {
-                        print("Starting AI extraction...")
-                        // Extract receipt data once using AI
-                        var extractedData = try await GeminiService.shared.extractReceiptData(from: image)
-                        print("AI extraction completed")
-                        print("Raw extracted data: \(extractedData)")
+                        var retryCount = 0
+                        var extractedData: [String: String]? = nil
                         
-                        // Check if all fields are empty
-                        let allFieldsEmpty = extractedData.values.allSatisfy { $0.isEmpty }
-                        if allFieldsEmpty {
-                            print("Warning: AI extraction returned all empty fields")
-                            
-                            // Try to extract date from PDF text
-                            if let pdfText = extractTextFromPDF(data: data),
-                               let date = findDateInText(pdfText) {
-                                print("Found date in PDF text: \(date)")
-                                extractedData["תאריך"] = date
-                            } else {
-                                print("No date found in PDF text")
-                                self.showAlert(title: "אזהרה", message: "לא זוהו פרטים בקבלה. האם הקבלה ברורה וקריאה?")
-                                return
+                        while retryCount < 3 && extractedData == nil {
+                            do {
+                                extractedData = try await AzureDocumentService.shared.extractReceiptData(from: image)
+                                print("AI extraction completed")
+                            } catch {
+                                retryCount += 1
+                                if retryCount < 3 {
+                                    // Wait before retrying with exponential backoff
+                                    try await Task.sleep(nanoseconds: UInt64(pow(2.0, Double(retryCount)) * 1_000_000_000))
+                                    continue
+                                }
+                                throw error
                             }
                         }
                         
-                        // Get the month from the extracted date or use current date as fallback
-                        let monthName: String
-                        if let dateStr = extractedData["תאריך"] {
-                            print("Found date string from PDF: \(dateStr)")
-                            if let date = self.parseReceiptDate(dateStr) {
-                                print("Parsed date from PDF: \(date)")
-                                monthName = self.formatMonthYear(from: date)
-                                print("Formatted month name from PDF: \(monthName)")
-                            } else {
-                                print("Failed to parse date string from PDF: \(dateStr)")
-                                monthName = self.getCurrentMonthName()
-                                print("Using current month for PDF: \(monthName)")
-                            }
-                        } else {
-                            print("No date found in extracted data from PDF")
-                            monthName = self.getCurrentMonthName()
-                            print("Using current month for PDF: \(monthName)")
+                        guard let finalExtractedData = extractedData else {
+                            throw NSError(domain: "com.receiptvault", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to extract data after retries"])
                         }
                         
+                        // Process the extracted data
+                        let monthName = await self.determineMonthName(from: finalExtractedData, pdfData: data)
                         let fileName = "Receipt_\(self.formatDate()).pdf"
                         
-                        // Save locally
+                        // Save locally first
                         if LocalFileManager.shared.saveReceipt(pdfData: data, fileName: fileName, monthName: monthName) {
                             if self.isAuthenticated {
-                                // Upload to Google Drive with extracted data
-                                try await self.googleDriveService.uploadReceiptWithData(image: image, extractedData: extractedData)
-                                DispatchQueue.main.async {
-                                    self.showAlert(title: "הצלחה", message: "הקבלה נשמרה בהצלחה והועלתה ל-Google Drive")
-                                }
+                                // Upload to Google Drive
+                                try await self.googleDriveService.uploadReceiptWithData(image: image, extractedData: finalExtractedData)
+                                await self.showSuccessAlert(isUploaded: true)
                             } else {
-                                self.showAlert(title: "הצלחה", message: "הקבלה נשמרה בהצלחה במכשיר")
+                                await self.showSuccessAlert(isUploaded: false)
                             }
                         }
                     } catch {
-                        self.showAlert(title: "שגיאה", message: "שגיאה בעיבוד הקבלה: \(error.localizedDescription)")
+                        print("Error in PDF processing: \(error)")
+                        await self.handleProcessingError(error)
                     }
                 }
-            } else {
-                self.showAlert(title: "שגיאה", message: "לא ניתן להמיר את הקובץ")
+            } catch {
+                print("Error reading PDF file: \(error)")
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                    self?.showAlert(title: "שגיאה", message: "שגיאה בקריאת הקבלה: \(error.localizedDescription)")
+                }
             }
-        } catch {
-            self.showAlert(title: "שגיאה", message: "שגיאה בשמירת הקבלה: \(error.localizedDescription)")
+        }
+    }
+    
+    private func determineMonthName(from extractedData: [String: String], pdfData: Data) async -> String {
+        if let dateStr = extractedData["תאריך"],
+           let date = self.parseReceiptDate(dateStr) {
+            return self.formatMonthYear(from: date)
+        }
+        
+        // Try to extract date from PDF text as fallback
+        if let pdfText = extractTextFromPDF(data: pdfData),
+           let date = findDateInText(pdfText),
+           let parsedDate = self.parseReceiptDate(date) {
+            return self.formatMonthYear(from: parsedDate)
+        }
+        
+        return self.getCurrentMonthName()
+    }
+    
+    private func showSuccessAlert(isUploaded: Bool) async {
+        await MainActor.run {
+            let message = isUploaded ? 
+                "הקבלה נשמרה בהצלחה והועלתה ל-Google Drive" :
+                "הקבלה נשמרה בהצלחה במכשיר"
+            self.showAlert(title: "הצלחה", message: message)
+        }
+    }
+    
+    private func handleProcessingError(_ error: Error) async {
+        await MainActor.run {
+            if let azureError = error as? AzureError {
+                self.handleAzureError(azureError)
+            } else {
+                self.showAlert(title: "שגיאה", 
+                             message: "שגיאה בעיבוד הקבלה: \(error.localizedDescription)")
+            }
         }
     }
     
@@ -472,12 +582,18 @@ class MainViewController: UIViewController {
     }
     
     private func findDateInText(_ text: String) -> String? {
-        // Regular expression pattern for DD/MM/YYYY format
-        let pattern = "\\b\\d{2}/\\d{2}/\\d{4}\\b"
+        // Enhanced patterns for different date formats
+        let patterns = [
+            "\\b\\d{1,2}/\\d{1,2}/\\d{4}\\b",     // DD/MM/YYYY or D/M/YYYY
+            "\\b\\d{1,2}\\.\\d{1,2}\\.\\d{4}\\b",  // DD.MM.YYYY or D.M.YYYY
+            "\\b\\d{1,2}-\\d{1,2}-\\d{4}\\b"      // DD-MM-YYYY or D-M-YYYY
+        ]
         
-        if let regex = try? NSRegularExpression(pattern: pattern, options: []),
-           let match = regex.firstMatch(in: text, options: [], range: NSRange(text.startIndex..., in: text)) {
-            return String(text[Range(match.range, in: text)!])
+        for pattern in patterns {
+            if let regex = try? NSRegularExpression(pattern: pattern, options: []),
+               let match = regex.firstMatch(in: text, options: [], range: NSRange(text.startIndex..., in: text)) {
+                return String(text[Range(match.range, in: text)!])
+            }
         }
         
         return nil
@@ -486,8 +602,37 @@ class MainViewController: UIViewController {
     private func parseReceiptDate(_ dateStr: String) -> Date? {
         let dateFormatter = DateFormatter()
         dateFormatter.locale = Locale(identifier: "he")
-        dateFormatter.dateFormat = "dd/MM/yyyy"
-        return dateFormatter.date(from: dateStr)
+        
+        // Try different date formats
+        let dateFormats = [
+            "dd/MM/yyyy",
+            "d/M/yyyy",
+            "dd.MM.yyyy",
+            "d.M.yyyy",
+            "dd-MM-yyyy",
+            "d-M-yyyy"
+        ]
+        
+        for format in dateFormats {
+            dateFormatter.dateFormat = format
+            if let date = dateFormatter.date(from: dateStr) {
+                return date
+            }
+        }
+        
+        // Try to clean the string and parse again
+        let cleanedStr = dateStr.trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: " ", with: "")
+        
+        for format in dateFormats {
+            dateFormatter.dateFormat = format
+            if let date = dateFormatter.date(from: cleanedStr) {
+                return date
+            }
+        }
+        
+        print("⚠️ Failed to parse date: \(dateStr) with any format")
+        return nil
     }
     
     private func formatMonthYear(from date: Date) -> String {
@@ -540,54 +685,153 @@ class MainViewController: UIViewController {
         
         return image
     }
+    
+    private func handleAzureError(_ error: Error) {
+        let errorMessage: String
+        
+        if let azureError = error as? AzureError {
+            switch azureError {
+            case .invalidConfiguration:
+                errorMessage = "שגיאת תצורה. אנא נסה שוב."
+            case .networkError(let message):
+                errorMessage = "שגיאת רשת: \(message)"
+            case .invalidResponse:
+                errorMessage = "התקבלה תשובה לא תקינה מהשרת"
+            case .authenticationError:
+                errorMessage = "שגיאת אימות. אנא נסה שוב."
+            case .processingError(let message):
+                errorMessage = "שגיאה בעיבוד: \(message)"
+            case .noDataExtracted:
+                errorMessage = "לא זוהו נתונים בקבלה. האם הקבלה ברורה וקריאה?"
+            }
+        } else if let urlError = error as? URLError {
+            errorMessage = "שגיאת רשת: \(urlError.localizedDescription)"
+        } else {
+            errorMessage = "שגיאה לא צפויה: \(error.localizedDescription)"
+        }
+        
+        showAlert(title: "שגיאה", message: errorMessage)
+    }
 }
 
 // MARK: - VNDocumentCameraViewControllerDelegate
 extension MainViewController: VNDocumentCameraViewControllerDelegate {
     func documentCameraViewController(_ controller: VNDocumentCameraViewController, didFinishWith scan: VNDocumentCameraScan) {
+        print("\n=== Starting Document Camera Processing ===")
+        print("Number of pages scanned: \(scan.pageCount)")
+        
         controller.dismiss(animated: true) { [weak self] in
-            guard let self = self else { return }
+            guard let self = self else {
+                print("❌ Self was deallocated during camera dismissal")
+                return
+            }
             
-            // Get the first page
-            let image = scan.imageOfPage(at: 0)
+            print("📸 Camera UI dismissed successfully")
+            
+            // Handle multiple pages
+            let pageCount = scan.pageCount
+            var allImages: [UIImage] = []
+            
+            print("📄 Processing \(pageCount) scanned pages...")
+            
+            // Collect all scanned pages
+            for pageIndex in 0..<pageCount {
+                print("  - Processing page \(pageIndex + 1)")
+                let image = scan.imageOfPage(at: pageIndex)
+                print("    ✓ Image size: \(image.size)")
+                print("    ✓ Scale: \(image.scale)")
+                print("    ✓ Orientation: \(image.imageOrientation.rawValue)")
+                allImages.append(image)
+            }
             
             Task {
                 do {
-                    // Extract receipt data once using AI
-                    let extractedData = try await GeminiService.shared.extractReceiptData(from: image)
-                    
-                    // Get the month from the extracted date or use current date as fallback
-                    let monthName: String
-                    if let dateStr = extractedData["תאריך"],
-                       let date = self.parseReceiptDate(dateStr) {
-                        monthName = self.formatMonthYear(from: date)
-                    } else {
-                        monthName = self.getCurrentMonthName()
-                    }
-                    
-                    // Save locally first
-                    if let pdfData = self.createPDFFromImage(image) {
-                        let fileName = "Receipt_\(self.formatDate()).pdf"
+                    print("\n=== Starting Batch Processing ===")
+                    // Process each image
+                    for (index, image) in allImages.enumerated() {
+                        print("\n📝 Processing Receipt \(index + 1) of \(allImages.count)")
                         
-                        if LocalFileManager.shared.saveReceipt(pdfData: pdfData, fileName: fileName, monthName: monthName) {
-                            print("Receipt saved locally")
-                            
-                            // Only try to upload if authenticated
-                            if self.isAuthenticated {
-                                // Upload to Google Drive with extracted data
-                                try await self.googleDriveService.uploadReceiptWithData(image: image, extractedData: extractedData)
-                                DispatchQueue.main.async {
-                                    self.showAlert(title: "הצלחה", message: "הקבלה נשמרה בהצלחה והועלתה ל-Google Drive")
-                                }
+                        print("🔍 Starting Azure AI analysis...")
+                        let extractedData = try await AzureDocumentService.shared.extractReceiptData(from: image)
+                        print("✓ AI Analysis complete")
+                        print("📋 Extracted data: \(extractedData)")
+                        
+                        // Get the month from the extracted date or use current date as fallback
+                        let monthName: String
+                        if let dateStr = extractedData["תאריך"] {
+                            print("📅 Found date in receipt: \(dateStr)")
+                            if let date = self.parseReceiptDate(dateStr) {
+                                monthName = self.formatMonthYear(from: date)
+                                print("✓ Using extracted date: \(monthName)")
                             } else {
-                                self.showAlert(title: "הצלחה", message: "הקבלה נשמרה בהצלחה במכשיר")
+                                monthName = self.getCurrentMonthName()
+                                print("⚠️ Could not parse date, using current month: \(monthName)")
                             }
                         } else {
-                            self.showAlert(title: "שגיאה", message: "שגיאה בשמירת הקבלה")
+                            monthName = self.getCurrentMonthName()
+                            print("⚠️ No date found, using current month: \(monthName)")
+                        }
+                        
+                        print("\n💾 Creating PDF...")
+                        if let pdfData = self.createPDFFromImage(image) {
+                            let fileName = "Receipt_\(self.formatDate())_\(index + 1).pdf"
+                            print("✓ PDF created: \(fileName) - Size: \(pdfData.count) bytes")
+                            
+                            print("📁 Saving to local storage...")
+                            if LocalFileManager.shared.saveReceipt(pdfData: pdfData, fileName: fileName, monthName: monthName) {
+                                print("✓ Saved locally")
+                                
+                                if self.isAuthenticated {
+                                    print("\n☁️ Starting Google Drive upload...")
+                                    print("Token status: \(String(describing: GIDSignIn.sharedInstance.currentUser?.accessToken))")
+                                    try await self.googleDriveService.uploadReceiptWithData(image: image, extractedData: extractedData)
+                                    print("✓ Uploaded to Google Drive")
+                                } else {
+                                    print("ℹ️ Skipping Google Drive upload - Not authenticated")
+                                }
+                            } else {
+                                print("❌ Failed to save locally")
+                                self.showAlert(title: "שגיאה", message: "שגיאה בשמירת הקבלה \(index + 1)")
+                                return
+                            }
+                        } else {
+                            print("❌ Failed to create PDF")
+                            self.showAlert(title: "שגיאה", message: "שגיאה ביצירת קובץ PDF")
+                            return
                         }
                     }
+                    
+                    print("\n=== Batch Processing Complete ===")
+                    // Show success message after all receipts are processed
+                    if self.isAuthenticated {
+                        self.showAlert(title: "הצלחה", message: "כל הקבלות נשמרו בהצלחה והועלו ל-Google Drive")
+                    } else {
+                        self.showAlert(title: "הצלחה", message: "כל הקבלות נשמרו בהצלחה במכשיר")
+                    }
                 } catch {
-                    self.showAlert(title: "שגיאה", message: "שגיאה בעיבוד הקבלה: \(error.localizedDescription)")
+                    print("\n❌ Error in batch processing:")
+                    print("Error type: \(type(of: error))")
+                    print("Error description: \(error.localizedDescription)")
+                    
+                    // Enhanced error handling with type safety
+                    switch error {
+                    case let azureError as AzureError:
+                        print("Azure error details: \(azureError)")
+                        self.handleAzureError(azureError)
+                    case let urlError as URLError:
+                        print("Network error: \(urlError.localizedDescription)")
+                        self.showAlert(title: "שגיאה", message: "שגיאת רשת: \(urlError.localizedDescription)")
+                    default:
+                        // Handle NSError properties if available
+                        let nsError = error as NSError
+                        print("Domain: \(nsError.domain)")
+                        print("Code: \(nsError.code)")
+                        print("User Info: \(nsError.userInfo)")
+                        
+                        // Generic error handling
+                        let errorMessage = nsError.localizedDescription
+                        self.showAlert(title: "שגיאה", message: "שגיאה לא צפויה: \(errorMessage)")
+                    }
                 }
             }
         }
@@ -618,8 +862,12 @@ extension MainViewController: VNDocumentCameraViewControllerDelegate {
     }
     
     func documentCameraViewController(_ controller: VNDocumentCameraViewController, didFailWithError error: Error) {
-        controller.dismiss(animated: true) { [weak self] in
-            self?.showAlert(title: "שגיאה", message: "שגיאה בסריקה: \(error.localizedDescription)")
+        print("Camera error: \(error.localizedDescription)")
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            controller.dismiss(animated: true) {
+                self.showAlert(title: "שגיאה", message: "שגיאה בסריקה: \(error.localizedDescription)")
+            }
         }
     }
     

@@ -63,33 +63,6 @@ class SettingsViewController: UIViewController {
         return button
     }()
     
-    private lazy var statusCard: UIView = {
-        let view = UIView()
-        AppTheme.styleCard(view)
-        return view
-    }()
-    
-    private lazy var statusStackView: UIStackView = {
-        let stack = UIStackView()
-        stack.axis = .vertical
-        stack.spacing = 4
-        return stack
-    }()
-    
-    private lazy var statusTitleLabel: UILabel = {
-        let label = UILabel()
-        label.font = .systemFont(ofSize: 14, weight: .medium)
-        label.text = "סטטוס חיבור"
-        return label
-    }()
-    
-    private lazy var statusLabel: UILabel = {
-        let label = UILabel()
-        label.font = .systemFont(ofSize: 12)
-        label.textColor = .secondaryLabel
-        return label
-    }()
-    
     // MARK: - Lifecycle
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -113,12 +86,7 @@ class SettingsViewController: UIViewController {
         view.addSubview(containerStackView)
         containerStackView.addArrangedSubview(signInButton)
         
-        statusCard.addSubview(statusStackView)
-        statusStackView.addArrangedSubview(statusTitleLabel)
-        statusStackView.addArrangedSubview(statusLabel)
-        containerStackView.addArrangedSubview(statusCard)
-        
-        [headerView, titleLabel, subtitleLabel, containerStackView, statusStackView].forEach {
+        [headerView, titleLabel, subtitleLabel, containerStackView].forEach {
             $0.translatesAutoresizingMaskIntoConstraints = false
         }
         
@@ -138,12 +106,7 @@ class SettingsViewController: UIViewController {
             
             containerStackView.topAnchor.constraint(equalTo: headerView.bottomAnchor),
             containerStackView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            containerStackView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            
-            statusStackView.topAnchor.constraint(equalTo: statusCard.topAnchor, constant: AppTheme.padding),
-            statusStackView.leadingAnchor.constraint(equalTo: statusCard.leadingAnchor, constant: AppTheme.padding),
-            statusStackView.trailingAnchor.constraint(equalTo: statusCard.trailingAnchor, constant: -AppTheme.padding),
-            statusStackView.bottomAnchor.constraint(equalTo: statusCard.bottomAnchor, constant: -AppTheme.padding)
+            containerStackView.trailingAnchor.constraint(equalTo: view.trailingAnchor)
         ])
         
         updateButtonStates()
@@ -151,21 +114,15 @@ class SettingsViewController: UIViewController {
     
     private func updateButtonStates() {
         if isAuthenticated {
-            signInButton.setTitle("התנתק מגוגל", for: .normal)
-            signInButton.backgroundColor = .systemRed
+            signInButton.setTitle("מחובר לגוגל דרייב - לחץ להתנתק", for: .normal)
+            signInButton.backgroundColor = AppTheme.accentColor
             signInButton.tintColor = .white
             signInButton.setTitleColor(.white, for: .normal)
-            
-            statusLabel.text = "מחובר לגוגל דרייב"
-            statusLabel.textColor = AppTheme.accentColor
         } else {
             signInButton.setTitle("התחבר עם גוגל", for: .normal)
             signInButton.backgroundColor = AppTheme.cardBackgroundColor
             signInButton.tintColor = .label
             signInButton.setTitleColor(.label, for: .normal)
-            
-            statusLabel.text = "לא מחובר"
-            statusLabel.textColor = .secondaryLabel
         }
     }
     
